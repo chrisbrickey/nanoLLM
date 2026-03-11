@@ -2,6 +2,9 @@
 __pycache__/
 .venv/
 
+# jupyter
+.ipynb_checkpoints/
+
 # ide
 .idea/
 
