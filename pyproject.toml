@@ -1,0 +1,12 @@
+[project]
+name = "minillm"
+version = "0.1.0"
+description = "building an LLM with jax"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "jax>=0.9.1",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "numpy>=2.4.3",
+]

@@ -1,0 +1,10 @@
+# python
+__pycache__/
+.venv/
+
+# ide
+.idea/
+
+# coding agents
+.claude/
+CLAUDE.md
