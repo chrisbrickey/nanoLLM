@@ -11,6 +11,7 @@ All dependencies are managed via `pyproject.toml` and installed using UV.
 | **python 3.11** | runtime                                             | 
 | **jupyter**     | Interactive notebook environment for development and experimentation |
 | **jax**         | High-performance numerical computing and automatic differentiation   |
+| **grain**       | Efficient data loading and preprocessing library for JAX             |
 | **numpy**       | Numerical computing library for array operations                     |
 | **matplotlib**  | Data visualization and plotting                                      |
 | **tiktoken**    | Converts input text into tokens (array of ints)                      |
@@ -30,7 +31,7 @@ _* The next word might not be the one with the highest probability, depending on
 uv sync
 ```
 
-### Run Jupyter
+### Run Jupyter Notebooks
 
 ```
 uv run jupyter notebook
@@ -43,11 +44,17 @@ This will open Jupyter in your default browser at `http://localhost:8888`.
 
 _NB: I added a git filter that cleans up notebooks (e.g., removes outputs and execution counts) prior to committing._
 
-## Anticipated project structure
+### Run Test Suite
+
+```
+uv run pytest
+```
+
+## Project structure
 I'm using notebooks for development and will extract code to `src/` as it stabilizes.
 
 - **notebooks/**: Interactive notebooks for building out components
 - **src/**: Reusable Python modules extracted from notebooks
 - **tests/**: Unit and integration tests for src/ code
-- **data/**: Training data and processed datasets
-- **checkpoints/**: Saved model weights
+- **data/**: Training data and processed datasets (gitignored)
+- **checkpoints/**: Under development; Saved model weights
