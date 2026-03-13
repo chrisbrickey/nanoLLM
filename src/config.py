@@ -1,5 +1,5 @@
 """
-Central configuration for miniLLM project.
+Central configuration for nanoLLM project.
 
 This module defines all paths, model hyperparameters, and training configurations
 used throughout the project. Import from this module to ensure consistency across

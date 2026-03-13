@@ -1,4 +1,4 @@
-# miniLLM
+# nanoLLM
 
 A simple LLM built using JAX, which predicts the next words in a phrase.
 
@@ -60,8 +60,8 @@ uv run pytest
 I'm using notebooks for development and am extracting code to `src/` (with test coverage) as code stabilizes.
 
 ```
-miniLLM/
-│ 
+nanoLLM/
+│
 ├── pyproject.toml       # UV dependencies and package configuration
 │ 
 ├── checkpoints/         # saved model weights (gitignored)
