@@ -1,5 +1,5 @@
 [project]
-name = "minillm"
+name = "nanollm"
 version = "0.1.0"
 description = "building an LLM with jax"
 readme = "README.md"

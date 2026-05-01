@@ -1818,7 +1818,7 @@ wheels = [
 ]
 
 [[package]]
-name = "minillm"
+name = "nanollm"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
