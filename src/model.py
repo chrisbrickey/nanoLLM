@@ -41,28 +41,32 @@ class NanoLLM(nnx.Module):
         """
         self.maxlen = maxlen
 
+        # create token and position vector embeddings
         self.embedding = TokenAndPositionEmbedding(
             maxlen, vocab_size, embed_dim, rngs=rngs
         )
 
+        # applies num_transformer_blocks of transformer layers sequentially
         self.transformer_blocks = nnx.List([
             TransformerBlock(embed_dim, num_heads, feed_forward_dim, rngs=rngs)
             for _ in range(num_transformer_blocks)
         ])
 
+        # output of dense vectors (hidden states) that capture a position's meaning
         self.output_layer = nnx.Linear(
             embed_dim, vocab_size, use_bias=False, rngs=rngs
         )
 
     def causal_attention_mask(self, seq_len: int) -> jnp.ndarray:
         """
-        Create causal attention mask to prevent attending to future tokens.
+        Prevents the LLM from paying attention to words ahead of the current position
+        so that the LLM cannot see the next word in the phrase before it makes a prediction.
 
-        Args:
-            seq_len: Sequence length
+        Blocks the LLM from accessing embeddings in the table where position > current position.
 
-        Returns:
-            Lower triangular mask of shape (seq_len, seq_len)
+        Args: seq_len: Sequence length
+
+        Returns: Lower triangular mask of shape (seq_len, seq_len)
         """
         return jnp.tril(jnp.ones((seq_len, seq_len)))
 
@@ -76,14 +80,14 @@ class NanoLLM(nnx.Module):
         Returns:
             Logits of shape (batch_size, seq_len, vocab_size)
         """
-        seq_len = token_ids.shape[1]
-        mask = self.causal_attention_mask(seq_len)
 
         x = self.embedding(token_ids)
 
+        seq_len = token_ids.shape[1]
+        mask = self.causal_attention_mask(seq_len)
         for block in self.transformer_blocks:
             x = block(x, mask=mask)
 
+        # raw scores for next-token prediction (then choose the highest score)
         logits = self.output_layer(x)
-
         return logits

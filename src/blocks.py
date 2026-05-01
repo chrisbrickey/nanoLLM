@@ -53,6 +53,8 @@ class TransformerBlock(nnx.Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, embed_dim)
         """
+
+        # skip some heads sometimes which generally adds stability to the model ("residual connections")
         attn_out = self.attention(x, mask=mask)
         x = x + attn_out
         return x
