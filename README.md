@@ -41,10 +41,19 @@ nanoLLM/
 ├── pyproject.toml       # UV dependencies and package configuration
 │ 
 ├── checkpoints/         # saved model weights (gitignored)
+│ 
 ├── data/                # training data and processed datasets (gitignored)
 │ 
 ├── notebooks/           # interactive notebooks for building out components*
-├── src/                 # reusable python modules extracted from notebooks
+│ 
+├── src/                 
+│    ├── config.py       # cross-cutting settings     
+│    │ 
+│    ├── data/
+│    ├── inference/ 
+│    ├── model/
+│    └── training/                                                                                      
+│ 
 └── tests/               # unit and integration tests for src/ code
 ```
 _*I added a git filter to clean the notebooks prior to committing (e.g., removes outputs and execution counts)._

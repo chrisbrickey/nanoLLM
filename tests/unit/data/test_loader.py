@@ -1,10 +1,10 @@
-"""Unit tests for src/data_loader.py"""
+"""Unit tests for src/data/loader.py"""
 
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
-from src.data_loader import load_text_from_file
+from src.data.loader import load_text_from_file
 from src.config import PROJECT_ROOT
 
 TEST_FILE_PATH = "data/test_file.txt"  # Relative to project root
@@ -121,101 +121,3 @@ class TestLoadStoriesFromFile:
         assert "/Users" not in captured.out
         assert "Loading data from data/test_file.txt" in captured.out
 
-
-# Test constants for preprocess_data tests
-TEST_BATCH_SIZE = 4
-TEST_MAXLEN = 20
-NUM_SAMPLE_PARAGRAPHS = 12
-
-
-@pytest.fixture
-def sample_paragraph_list():
-    """Fixture providing a list of sample paragraphs for preprocessing"""
-    return [f"paragraph_{i:03d}" for i in range(NUM_SAMPLE_PARAGRAPHS)]
-
-
-class TestPreprocessData:
-    """Test suite for preprocess_data function"""
-
-    def test_creates_dataloader_with_valid_data(self, sample_paragraph_list, capsys):
-        """Test that preprocess_data creates a dataloader with correct batch estimation"""
-        from src.data_loader import preprocess_data
-
-        with patch("src.data_loader.StoryDataset") as mock_dataset_class:
-            with patch("src.data_loader.pygrain.IndexSampler") as mock_sampler:
-                with patch("src.data_loader.pygrain.DataLoader") as mock_dataloader:
-                    # Mock dataset to return correct length
-                    mock_dataset = MagicMock()
-                    mock_dataset.__len__ = MagicMock(return_value=NUM_SAMPLE_PARAGRAPHS)
-                    mock_dataset_class.return_value = mock_dataset
-
-                    dataloader, batches_per_epoch = preprocess_data(
-                        list_of_paragraphs=sample_paragraph_list,
-                        batch_size=TEST_BATCH_SIZE,
-                        maxlen=TEST_MAXLEN,
-                        delimiter=DELIMITER,
-                        num_epochs=1,
-                        shuffle=False,
-                        seed=42
-                    )
-
-        # Verify batch calculation: 12 paragraphs / 4 batch_size = 3 batches
-        expected_batches = NUM_SAMPLE_PARAGRAPHS // TEST_BATCH_SIZE
-        assert batches_per_epoch == expected_batches
-
-        # Verify dataset was created with correct parameters
-        mock_dataset_class.assert_called_once_with(
-            sample_paragraph_list,
-            TEST_MAXLEN,
-            DELIMITER
-        )
-
-        # Verify sampler was configured correctly
-        mock_sampler.assert_called_once()
-
-        # Verify print output
-        captured = capsys.readouterr()
-        assert "Estimated batches per epoch" in captured.out
-        assert "Created DataLoader" in captured.out
-
-    def test_empty_dataset_raises_error(self):
-        """Test that preprocess_data raises ValueError for empty paragraph list"""
-        from src.data_loader import preprocess_data
-
-        empty_list = []
-
-        with pytest.raises(ValueError, match="No valid stories found in the dataset"):
-            preprocess_data(
-                list_of_paragraphs=empty_list,
-                batch_size=TEST_BATCH_SIZE,
-                maxlen=TEST_MAXLEN,
-                delimiter=DELIMITER
-            )
-
-    def test_batch_estimation_with_shuffle_enabled(self, sample_paragraph_list, capsys):
-        """Test that batch estimation works correctly when shuffle is enabled"""
-        from src.data_loader import preprocess_data
-
-        with patch("src.data_loader.StoryDataset") as mock_dataset_class:
-            with patch("src.data_loader.pygrain.IndexSampler") as mock_sampler:
-                with patch("src.data_loader.pygrain.DataLoader") as mock_dataloader:
-                    mock_dataset = MagicMock()
-                    mock_dataset.__len__ = MagicMock(return_value=NUM_SAMPLE_PARAGRAPHS)
-                    mock_dataset_class.return_value = mock_dataset
-
-                    dataloader, batches_per_epoch = preprocess_data(
-                        list_of_paragraphs=sample_paragraph_list,
-                        batch_size=TEST_BATCH_SIZE,
-                        maxlen=TEST_MAXLEN,
-                        delimiter=DELIMITER,
-                        shuffle=True,
-                        seed=99
-                    )
-
-        # Batch estimation should be same regardless of shuffle
-        assert batches_per_epoch == NUM_SAMPLE_PARAGRAPHS // TEST_BATCH_SIZE
-
-        # Verify sampler was called with shuffle=True
-        call_kwargs = mock_sampler.call_args.kwargs
-        assert call_kwargs["shuffle"] is True
-        assert call_kwargs["seed"] == 99
