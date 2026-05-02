@@ -17,6 +17,12 @@ dependencies = [
     "tiktoken>=0.12.0",
 ]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:Implicit conversion of an array to a dtype is deprecated:DeprecationWarning:chex",
+    "ignore:Sharding info not provided when restoring:UserWarning:orbax",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
