@@ -1,14 +1,37 @@
-"""Unit tests for src/model.py"""
+"""Unit tests for src/model/model.py"""
 
 import jax.numpy as jnp
+import flax.nnx as nnx
 import pytest
 
-from src.model import NanoLLM
+from src.model.model import NanoLLM
 
 # Test constants - generic sequence lengths
 SEQ_LENGTH_SMALL = 4
 SEQ_LENGTH_MEDIUM = 8
 SEQ_LENGTH_LARGE = 16
+
+# Small model dimensions for fast forward-pass tests
+SMALL_MAXLEN = 4
+SMALL_VOCAB_SIZE = 200
+SMALL_EMBED_DIM = 12  # divisible by SMALL_NUM_HEADS
+SMALL_NUM_HEADS = 3
+SMALL_FF_DIM = 16
+SMALL_NUM_BLOCKS = 1
+SEED = 0
+
+
+@pytest.fixture
+def small_model() -> NanoLLM:
+    return NanoLLM(
+        maxlen=SMALL_MAXLEN,
+        vocab_size=SMALL_VOCAB_SIZE,
+        embed_dim=SMALL_EMBED_DIM,
+        num_heads=SMALL_NUM_HEADS,
+        feed_forward_dim=SMALL_FF_DIM,
+        num_transformer_blocks=SMALL_NUM_BLOCKS,
+        rngs=nnx.Rngs(SEED),
+    )
 
 
 class TestCausalAttentionMask:
@@ -58,3 +81,23 @@ class TestCausalAttentionMask:
         diagonal = jnp.diag(mask)
         assert jnp.all(diagonal == 1), \
             f"Expected all diagonal elements to be 1, got {diagonal}"
+
+
+class TestNanoLLMForwardPass:
+    """Test suite for NanoLLM.__call__()"""
+
+    def test_output_shape(self, small_model: NanoLLM) -> None:
+        batch_size = 2
+        token_ids = jnp.zeros((batch_size, SMALL_MAXLEN), dtype=jnp.int32)
+        logits = small_model(token_ids)
+        assert logits.shape == (batch_size, SMALL_MAXLEN, SMALL_VOCAB_SIZE)
+
+    def test_output_dtype_is_float(self, small_model: NanoLLM) -> None:
+        token_ids = jnp.zeros((1, SMALL_MAXLEN), dtype=jnp.int32)
+        logits = small_model(token_ids)
+        assert jnp.issubdtype(logits.dtype, jnp.floating)
+
+    def test_different_inputs_give_different_logits(self, small_model: NanoLLM) -> None:
+        ids_a = jnp.zeros((1, SMALL_MAXLEN), dtype=jnp.int32)
+        ids_b = jnp.ones((1, SMALL_MAXLEN), dtype=jnp.int32)
+        assert not jnp.allclose(small_model(ids_a), small_model(ids_b))

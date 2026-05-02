@@ -5,7 +5,7 @@ import grain.python as pygrain
 import tiktoken
 
 from src.config import validate_project_path, format_path_for_display
-from src.dataset import StoryDataset
+from src.data.dataset import StoryDataset
 
 
 def load_text_from_file(

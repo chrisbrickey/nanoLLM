@@ -4,8 +4,8 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 
 from src.config import model_config
-from src.embeddings import TokenAndPositionEmbedding
-from src.blocks import TransformerBlock
+from src.model.embeddings import TokenAndPositionEmbedding
+from src.model.blocks import TransformerBlock
 
 
 class NanoLLM(nnx.Module):

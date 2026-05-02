@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 import tiktoken
 
-from src.model import NanoLLM
+from src.model.model import NanoLLM
 
 
 def generate_text(
