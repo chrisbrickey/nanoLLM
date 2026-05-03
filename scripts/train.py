@@ -10,10 +10,12 @@ Usage:
 
 import argparse
 import dataclasses
+import logging
 import sys
 from pathlib import Path
 
 import flax.nnx as nnx
+import jax
 
 from src.config import (
     DEFAULT_CHECKPOINT_PATH,
@@ -23,8 +25,11 @@ from src.config import (
     training_config,
 )
 from src.data.loader import load_text_from_file, preprocess_data
+from src.config.logging import setup_logging
 from src.model.model import NanoLLM
 from src.training.trainer import Trainer
+
+logger = logging.getLogger(__name__)
 
 _DELIMITER = "<|endoftext|>"
 _TOKENIZER_NAME = "gpt2"
@@ -50,6 +55,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    setup_logging()
     args = _parse_args()
 
     overrides: dict[str, object] = {}
@@ -69,16 +75,20 @@ def main() -> None:
     data_file = Path(args.data_file) if args.data_file else TINYSTORIES_FILE
     checkpoint_path = Path(args.checkpoint) if args.checkpoint else DEFAULT_CHECKPOINT_PATH
 
-    print("=" * 50)
-    print("nanoLLM training")
-    print(f"  data file:   {data_file}")
-    print(f"  max stories: {config.max_stories}")
-    print(f"  epochs:      {config.num_epochs}")
-    print(f"  batch size:  {config.batch_size}")
-    print(f"  shuffle:     {config.shuffle}")
-    print(f"  seed:        {config.seed}")
-    print(f"  checkpoint:  {checkpoint_path}")
-    print("=" * 50)
+    logger.info(
+        f"\n\n{'-' * 30}\n"
+        "Commencing nanoLLM training:\n"
+        "\tdata file:   %s\n"
+        "\tmax stories: %s\n"
+        "\tepochs:      %d\n"
+        "\tbatch size:  %d\n"
+        "\tshuffle:     %s\n"
+        "\tseed:        %d\n"
+        "\tcheckpoint:  %s\n"
+        f"{'-' * 30}\n\n",
+        data_file, config.max_stories, config.num_epochs,
+        config.batch_size, config.shuffle, config.seed, checkpoint_path,
+    )
 
     tokenizer_config = TokenizerConfig(delimiter=_DELIMITER, name=_TOKENIZER_NAME)
 
@@ -99,7 +109,7 @@ def main() -> None:
             seed=config.seed,
         )
 
-        print("\nBuilding model ...")
+        logger.info("Building model ...")
         model = NanoLLM(
             maxlen=model_config.maxlen,
             vocab_size=model_config.vocab_size,
@@ -109,7 +119,9 @@ def main() -> None:
             num_transformer_blocks=model_config.num_transformer_blocks,
             rngs=nnx.Rngs(config.seed),
         )
-        print("Model ready.\n")
+        params = nnx.state(model, nnx.Param)
+        param_count = sum(v.size for v in jax.tree_util.tree_leaves(params))
+        logger.info("Model ready — %s parameters", f"{param_count:,}")
 
         trainer = Trainer(
             model=model,
@@ -120,13 +132,17 @@ def main() -> None:
         )
         trainer.train()
 
-        print("\nTraining complete.")
+        logger.info(
+            f"\n\n{'-' * 30}\n"
+            "Training complete.\n"
+            f"{'-' * 30}\n\n"
+        )
 
     except FileNotFoundError as e:
-        print(f"\nError: {e}", file=sys.stderr)
+        logger.error("%s", e)
         sys.exit(1)
     except ValueError as e:
-        print(f"\nError: {e}", file=sys.stderr)
+        logger.error("%s", e)
         sys.exit(1)
 
 

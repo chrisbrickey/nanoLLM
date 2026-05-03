@@ -1,5 +1,6 @@
 """Unit tests for src/checkpoint.py"""
 
+import logging
 import shutil
 import uuid
 from collections.abc import Generator
@@ -45,20 +46,24 @@ def project_checkpoint_path() -> Generator[Path, None, None]:
 
 
 class TestSaveCheckpoint:
-    def test_calls_orbax_save_with_correct_args(self) -> None:
+    def test_calls_orbax_save_with_correct_args(self, caplog: pytest.LogCaptureFixture) -> None:
         model = _make_model()
         save_path = CHECKPOINTS_DIR / "mock_test.orbax"
 
-        with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
-            mock_instance = MagicMock()
-            MockCheckpointer.return_value = mock_instance
+        with caplog.at_level(logging.INFO, logger="src.checkpoint"):
+            with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
+                mock_instance = MagicMock()
+                MockCheckpointer.return_value = mock_instance
 
-            save_checkpoint(model, save_path)
+                save_checkpoint(model, save_path)
 
-            mock_instance.save.assert_called_once()
-            call = mock_instance.save.call_args
-            assert call.args[0] == save_path.resolve()
-            assert call.kwargs["force"] is True
+                mock_instance.save.assert_called_once()
+                call = mock_instance.save.call_args
+                assert call.args[0] == save_path.resolve()
+                assert call.kwargs["force"] is True
+
+        assert "Saving checkpoint" in caplog.text
+        assert "Checkpoint saved" in caplog.text
 
     def test_rejects_path_outside_project(self) -> None:
         model = _make_model()
@@ -75,15 +80,21 @@ class TestLoadCheckpoint:
 
 class TestSaveLoadRoundTrip:
     def test_restored_model_params_match_original(
-        self, project_checkpoint_path: Path
+        self, project_checkpoint_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         original = _make_model(seed=0)
-        save_checkpoint(original, project_checkpoint_path)
 
-        # Initialize with a different seed so params start different
-        restored_model = _make_model(seed=99)
-        load_checkpoint(restored_model, project_checkpoint_path)
+        with caplog.at_level(logging.INFO, logger="src.checkpoint"):
+            save_checkpoint(original, project_checkpoint_path)
+
+            # Initialize with a different seed so params start different
+            restored_model = _make_model(seed=99)
+            load_checkpoint(restored_model, project_checkpoint_path)
 
         orig_leaves = jax.tree_util.tree_leaves(nnx.state(original))
         rest_leaves = jax.tree_util.tree_leaves(nnx.state(restored_model))
         assert all(jnp.allclose(a, b) for a, b in zip(orig_leaves, rest_leaves))
+        assert "Saving checkpoint" in caplog.text
+        assert "Checkpoint saved" in caplog.text
+        assert "Loading checkpoint" in caplog.text
+        assert "Checkpoint loaded" in caplog.text

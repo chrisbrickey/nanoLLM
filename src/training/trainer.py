@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from src.config import TrainingConfig
 from src.model.model import NanoLLM
 from src.training.schedule import build_learning_rate_schedule
 from src.training.step import make_train_step
+
+logger = logging.getLogger(__name__)
+
 
 class Trainer:
 
@@ -53,6 +57,7 @@ class Trainer:
 
         for epoch in range(self.training_config.num_epochs):
             step = 0
+            epoch_losses: list[float] = []
             for batch in self.dataloader:
                 input_batch = jnp.array(jnp.array(batch).T).astype(jnp.int32)
                 target_batch = prep_target_batch(
@@ -67,17 +72,24 @@ class Trainer:
                     self.metrics.reset()
 
                     current_learning_rate = self.schedule(step)
-                    print(
-                        f"\nEpoch: {epoch + 1}, Step {step + 1}, "
-                        f"Loss: {metrics_history['train_loss'][-1]:.4f}, "
-                        f"LR: {current_learning_rate:.2e}"
+                    loss_val = metrics_history["train_loss"][-1]
+                    epoch_losses.append(loss_val)
+                    logger.info(
+                        "epoch %d/%d  step %d  loss=%.4f  lr=%.2e",
+                        epoch + 1, self.training_config.num_epochs, step + 1,
+                        loss_val, float(current_learning_rate),
                     )
 
                 step += 1
 
+            if epoch_losses:
+                logger.info(
+                    "Epoch %d/%d complete — avg loss: %.4f",
+                    epoch + 1, self.training_config.num_epochs,
+                    sum(epoch_losses) / len(epoch_losses),
+                )
+
         if self.checkpoint_path is not None:
-            print(f"\nSaving checkpoint to {self.checkpoint_path} ...")
             save_checkpoint(self.model, self.checkpoint_path)
-            print("Checkpoint saved.")
 
         return metrics_history

@@ -1,9 +1,13 @@
 """Text generation and inference utilities."""
 
+import logging
+
 import jax.numpy as jnp
 import tiktoken
 
 from src.model.model import NanoLLM
+
+logger = logging.getLogger(__name__)
 
 
 def generate_text(
@@ -36,6 +40,11 @@ def generate_text(
     tokens = list(start_tokens)
     end_token_id = tokenizer.encode(delimiter, allowed_special={delimiter})[0]
 
+    logger.info(
+        "Generating text: context=%d tokens, max_new_tokens=%d, temperature=%.2f",
+        len(start_tokens), max_new_tokens, temperature,
+    )
+
     for _ in range(max_new_tokens):
         context = tokens[-model.maxlen:]
 
@@ -55,8 +64,13 @@ def generate_text(
         next_token = int(jnp.argmax(next_token_logits))
 
         if next_token == end_token_id:
+            logger.info(
+                "Generation stopped at end token after %d new tokens",
+                len(tokens) - len(start_tokens),
+            )
             break
 
         tokens.append(next_token)
 
+    logger.info("Generation complete: %d tokens total", len(tokens))
     return tokenizer.decode(tokens)

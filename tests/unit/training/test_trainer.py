@@ -1,5 +1,6 @@
 """Unit tests for src/training/trainer.py"""
 
+import logging
 import shutil
 import uuid
 from collections.abc import Generator, Iterator
@@ -86,18 +87,21 @@ class TestTrainerInit:
 
 
 class TestTrainerTrain:
-    def test_returns_populated_metrics_history(self) -> None:
+    def test_returns_populated_metrics_history(self, caplog: pytest.LogCaptureFixture) -> None:
         trainer = Trainer(
             model=_make_model(),
             training_config=_make_config(),
             dataloader=_make_dataloader(),
             batches_per_epoch=N_BATCHES,
         )
-        history = trainer.train()
+        with caplog.at_level(logging.INFO, logger="src.training.trainer"):
+            history = trainer.train()
         assert "train_loss" in history
         assert len(history["train_loss"]) > 0
+        assert "loss=" in caplog.text
+        assert "Epoch 1/1 complete" in caplog.text
 
-    def test_log_every_n_steps_controls_history_length(self) -> None:
+    def test_log_every_n_steps_controls_history_length(self, caplog: pytest.LogCaptureFixture) -> None:
         config = _make_config(log_every_n_steps=2)
         trainer = Trainer(
             model=_make_model(),
@@ -105,19 +109,23 @@ class TestTrainerTrain:
             dataloader=_make_dataloader(),  # N_BATCHES=4 batches
             batches_per_epoch=N_BATCHES,
         )
-        history = trainer.train()
+        with caplog.at_level(logging.INFO, logger="src.training.trainer"):
+            history = trainer.train()
         # 4 batches / log every 2 steps = 2 entries
         assert len(history["train_loss"]) == N_BATCHES // config.log_every_n_steps
+        assert caplog.text.count("loss=") == N_BATCHES // config.log_every_n_steps
 
-    def test_empty_dataloader_returns_empty_history(self) -> None:
+    def test_empty_dataloader_returns_empty_history(self, caplog: pytest.LogCaptureFixture) -> None:
         trainer = Trainer(
             model=_make_model(),
             training_config=_make_config(),
             dataloader=_FakeDataLoader(n_batches=0, maxlen=MAXLEN, batch_size=BATCH_SIZE),
             batches_per_epoch=10,  # enough for a valid schedule; dataloader yields nothing
         )
-        history = trainer.train()
+        with caplog.at_level(logging.INFO, logger="src.training.trainer"):
+            history = trainer.train()
         assert history == {"train_loss": []}
+        assert "loss=" not in caplog.text
 
     def test_checkpoint_path_none_skips_save(self) -> None:
         trainer = Trainer(
