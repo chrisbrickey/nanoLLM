@@ -75,6 +75,26 @@ class TestMakeTrainStep:
         assert jnp.isfinite(result["loss"])
         assert float(result["loss"]) > 0.0
 
+    def test_multiple_steps_average_correctly(self) -> None:
+        model = _make_model()
+        # lr=0 freezes weights so every step sees identical loss — average must equal any single step
+        frozen_optimizer = nnx.ModelAndOptimizer(model, optax.sgd(learning_rate=0.0))
+        accumulated_metrics = _make_metrics()
+        batch = _make_batch()
+
+        train_step = make_train_step()
+        for _ in range(3):
+            train_step(model, frozen_optimizer, accumulated_metrics, batch)
+
+        single_metrics = _make_metrics()
+        train_step(model, frozen_optimizer, single_metrics, batch)
+
+        assert jnp.allclose(
+            accumulated_metrics.compute()["loss"],
+            single_metrics.compute()["loss"],
+            atol=1e-5,
+        )
+
     def test_gradients_are_nonzero(self) -> None:
         model = _make_model()
         batch = _make_batch()
