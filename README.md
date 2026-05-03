@@ -5,6 +5,7 @@ Built with JAX and Flax NNX, this program covers the entire pipelime from embedd
 nanoLLM supports saving and loading training checkpoints, which enables model persistence, fine-tuning, and inference with pre-trained weights.
 I developed the code iteratively, trying out implementations in Jupyter notebooks and extracting to modules with test coverage as code stabilized.
 
+
 ## Key Features & Capabilities
 
 ### Transformer Architecture
@@ -32,7 +33,26 @@ I developed the code iteratively, trying out implementations in Jupyter notebook
 - **Temperature-based sampling**: User can set temperature to tune randomness in the probability distribution. e.g. Lower temperatures produces focused, deterministic outputs. Higher temperatures enable creative, diverse generation.
 - **Configurable generation length**: User can set maximum token counts to control output length.
 
-## Project structure
+
+## Architecture
+
+### Technology
+This project uses [UV](https://docs.astral.sh/uv/) as the package manager.
+All dependencies are managed via `pyproject.toml` and installed using UV.
+
+| Package         | Purpose                                                              |
+|-----------------|----------------------------------------------------------------------|
+| **python 3.11** | runtime                                             | 
+| **jupyter**     | Interactive notebook environment for development and experimentation |
+| **jax**         | High-performance numerical computing and automatic differentiation   |
+| **grain**       | Efficient data loading and preprocessing library for JAX             |
+| **numpy**       | Numerical computing library for array operations                     |
+| **matplotlib**  | Data visualization and plotting                                      |
+| **tiktoken**    | Converts input text into tokens (array of ints)                      |
+| **orbax-checkpoint** | Model checkpoint saving, loading, and restoration              |
+
+
+### Project Structure
 I'm using notebooks for development and am extracting code to `src/` (with test coverage) as code stabilizes.
 
 ```
@@ -41,10 +61,10 @@ nanoLLM/
 ├── pyproject.toml       # UV dependencies and package configuration
 │ 
 ├── checkpoints/         # saved model weights (gitignored)
-│ 
 ├── data/                # training data and processed datasets (gitignored)
 │ 
 ├── notebooks/           # interactive notebooks for building out components*
+├── scripts/             # CLI entrypoints for training, inference, etc. 
 │ 
 ├── src/                 
 │    ├── config.py       # cross-cutting settings     
@@ -58,37 +78,39 @@ nanoLLM/
 ```
 _*I added a git filter to clean the notebooks prior to committing (e.g., removes outputs and execution counts)._
 
-## Technology
-This project uses [UV](https://docs.astral.sh/uv/) as the package manager.
-All dependencies are managed via `pyproject.toml` and installed using UV.
-
-| Package         | Purpose                                                              |
-|-----------------|----------------------------------------------------------------------|
-| **python 3.11** | runtime                                             | 
-| **jupyter**     | Interactive notebook environment for development and experimentation |
-| **jax**         | High-performance numerical computing and automatic differentiation   |
-| **grain**       | Efficient data loading and preprocessing library for JAX             |
-| **numpy**       | Numerical computing library for array operations                     |
-| **matplotlib**  | Data visualization and plotting                                      |
-| **tiktoken**    | Converts input text into tokens (array of ints)                      |
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Install dependencies
 
 ```
 uv sync
 ```
 
-### 2. Install Package in Editable Mode
-
-This permits import of modules from `src/` in notebooks and other modules like `from src.utils import some_function`.
+### 2. Train the model
 
 ```
-uv pip install -e .
+# run with default configuration
+uv run nanollm-train
+
+# run with some overrides
+uv run nanollm-train --num-epochs 5 --batch-size 64 --checkpoint my_run.orbax
 ```
 
-### 3. Launch Jupyter Notebooks
+#### Optional Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--batch-size` | Number of samples per training batch | `32` |
+| `--num-epochs` | Number of full passes through the training data | `3` |
+| `--max-stories` | Maximum number of stories to load from the data file | `100` |
+| `--seed` | Random seed for reproducibility | `42` |
+| `--shuffle` / `--no-shuffle` | Enable or disable dataset shuffling | `False` |
+| `--checkpoint` | Path to save the training checkpoint | `checkpoints/nano_checkpoint.orbax` |
+| `--data-file` | Path to the training data file | `data/TinyStories-1000.txt` |
+
+
+### 3. [Optional] Launch jupyter notebooks
 
 ```
 uv run jupyter notebook
@@ -99,13 +121,14 @@ uv run jupyter lab
 
 This will open Jupyter in your default browser at `http://localhost:8888`.
 
-### 4. Run Test Suite
+
+## Troubleshooting
+
+### Test Suite
 
 ```
 uv run pytest
 ```
-
-## Troubleshooting
 
 ### Environment / PATH issues
 

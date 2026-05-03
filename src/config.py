@@ -32,6 +32,9 @@ DATA_DIR.mkdir(exist_ok=True)
 # Data file paths
 TINYSTORIES_FILE = DATA_DIR / "TinyStories-1000.txt"
 
+# Default checkpoint path (matches notebook output)
+DEFAULT_CHECKPOINT_PATH = CHECKPOINTS_DIR / "nano_checkpoint.orbax"
+
 
 # ============================================================================
 # Path Validation Utilities
