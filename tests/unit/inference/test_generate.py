@@ -1,5 +1,6 @@
 """Unit tests for generate_text — model and tokenizer are mocked."""
 
+import logging
 from unittest.mock import MagicMock
 import numpy as np
 import pytest
@@ -39,49 +40,56 @@ def mock_tokenizer() -> MagicMock:
 
 class TestGenerateTextStopping:
     def test_stops_at_end_token(
-        self, mock_model: MagicMock, mock_tokenizer: MagicMock
+        self, mock_model: MagicMock, mock_tokenizer: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         mock_model.return_value = _logits_for_token(END_TOKEN_ID)
 
-        generate_text(
-            model=mock_model,
-            tokenizer=mock_tokenizer,
-            delimiter=DELIMITER,
-            start_tokens=START_TOKENS,
-            max_new_tokens=10,
-        )
+        with caplog.at_level(logging.INFO, logger="src.inference.generate"):
+            generate_text(
+                model=mock_model,
+                tokenizer=mock_tokenizer,
+                delimiter=DELIMITER,
+                start_tokens=START_TOKENS,
+                max_new_tokens=10,
+            )
 
         assert mock_model.call_count == 1
+        assert "stopped at end token" in caplog.text
 
     def test_generates_up_to_max_new_tokens(
-        self, mock_model: MagicMock, mock_tokenizer: MagicMock
+        self, mock_model: MagicMock, mock_tokenizer: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         max_new = 5
-        generate_text(
-            model=mock_model,
-            tokenizer=mock_tokenizer,
-            delimiter=DELIMITER,
-            start_tokens=START_TOKENS,
-            max_new_tokens=max_new,
-        )
+        with caplog.at_level(logging.INFO, logger="src.inference.generate"):
+            generate_text(
+                model=mock_model,
+                tokenizer=mock_tokenizer,
+                delimiter=DELIMITER,
+                start_tokens=START_TOKENS,
+                max_new_tokens=max_new,
+            )
 
         assert mock_model.call_count == max_new
+        assert "Generation complete" in caplog.text
+        assert "stopped at end token" not in caplog.text
 
 
 class TestGenerateTextOutput:
     def test_returns_decoded_string(
-        self, mock_model: MagicMock, mock_tokenizer: MagicMock
+        self, mock_model: MagicMock, mock_tokenizer: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
-        result = generate_text(
-            model=mock_model,
-            tokenizer=mock_tokenizer,
-            delimiter=DELIMITER,
-            start_tokens=START_TOKENS,
-            max_new_tokens=3,
-        )
+        with caplog.at_level(logging.INFO, logger="src.inference.generate"):
+            result = generate_text(
+                model=mock_model,
+                tokenizer=mock_tokenizer,
+                delimiter=DELIMITER,
+                start_tokens=START_TOKENS,
+                max_new_tokens=3,
+            )
 
         assert isinstance(result, str)
         mock_tokenizer.decode.assert_called_once()
+        assert "Generating text" in caplog.text
 
     def test_decode_receives_start_tokens_plus_generated(
         self, mock_model: MagicMock, mock_tokenizer: MagicMock

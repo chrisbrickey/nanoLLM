@@ -1,5 +1,6 @@
 """Integration tests for the CLI entry point (scripts/train.py)."""
 
+import logging
 import shutil
 import uuid
 from collections.abc import Generator
@@ -117,18 +118,23 @@ class TestCliArguments:
 
 
 class TestCliErrorHandling:
-    def test_missing_data_file_exits_1_with_error_message(self, capsys) -> None:
+    @pytest.fixture(autouse=True)
+    def _capture_logs(self, caplog: pytest.LogCaptureFixture) -> Generator[None, None, None]:
+        with caplog.at_level(logging.ERROR, logger="scripts.train"):
+            yield
+
+    def test_missing_data_file_exits_1_with_error_message(self, caplog) -> None:
         argv = ["nanollm-train", "--data-file", str(DATA_DIR / "nonexistent.txt")]
         with patch("sys.argv", argv):
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1
-        assert "Error:" in capsys.readouterr().err
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
 
-    def test_data_file_outside_project_exits_1_with_error_message(self, capsys) -> None:
+    def test_data_file_outside_project_exits_1_with_error_message(self, caplog) -> None:
         argv = ["nanollm-train", "--data-file", "/tmp/outside_project.txt"]
         with patch("sys.argv", argv):
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code == 1
-        assert "Error:" in capsys.readouterr().err
+        assert any(r.levelno == logging.ERROR for r in caplog.records)

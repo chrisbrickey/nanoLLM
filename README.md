@@ -73,7 +73,7 @@ nanoLLM/
 │    ├── model/
 │    └── training/                                                                                      
 │ 
-└── tests/               # unit and integration tests for src/ code
+└── tests/               # unit and integration testing on python modules and scripts
 ```
 _*I added a git filter to clean the notebooks prior to committing (e.g., removes outputs and execution counts)._
 

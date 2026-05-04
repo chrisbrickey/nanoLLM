@@ -1,7 +1,9 @@
 """Unit tests for src/data/loader.py"""
 
+import logging
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import mock_open, patch
 import pytest
 
 from src.data.loader import load_text_from_file
@@ -17,10 +19,14 @@ SAMPLE_STORY_3 = "Third test story goes here."
 class TestLoadStoriesFromFile:
     """Test suite for load_stories_from_file utility function"""
 
-    def test_load_single_story_with_delimiter(self, capsys):
+    @pytest.fixture(autouse=True)
+    def _capture_logs(self, caplog: pytest.LogCaptureFixture) -> Generator[None, None, None]:
+        with caplog.at_level(logging.INFO, logger="src.data.loader"):
+            yield
+
+    def test_load_single_story_with_delimiter(self, caplog):
         """Test loading a single story that ends with delimiter"""
         file_content = f"{SAMPLE_STORY_1}{DELIMITER}\n"
-        expected_path = (PROJECT_ROOT / TEST_FILE_PATH).resolve()
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
@@ -28,13 +34,10 @@ class TestLoadStoriesFromFile:
 
         assert len(stories) == 1
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
+        assert "Loading data" in caplog.text
+        assert "Loaded 1 paragraphs" in caplog.text
 
-        # Verify print output
-        captured = capsys.readouterr()
-        assert "Loading data" in captured.out
-        assert "Loaded 1 paragraphs" in captured.out
-
-    def test_load_multiple_stories(self, capsys):
+    def test_load_multiple_stories(self, caplog):
         """Test loading multiple stories separated by delimiters"""
         file_content = f"{SAMPLE_STORY_1}{DELIMITER}\n{SAMPLE_STORY_2}{DELIMITER}\n{SAMPLE_STORY_3}{DELIMITER}\n"
 
@@ -46,9 +49,7 @@ class TestLoadStoriesFromFile:
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
         assert stories[1] == f"{SAMPLE_STORY_2}{DELIMITER}"
         assert stories[2] == f"{SAMPLE_STORY_3}{DELIMITER}"
-
-        captured = capsys.readouterr()
-        assert "Loaded 3 paragraphs" in captured.out
+        assert "Loaded 3 paragraphs" in caplog.text
 
     def test_file_not_found(self):
         """Test that FileNotFoundError is raised when file doesn't exist"""
@@ -56,7 +57,7 @@ class TestLoadStoriesFromFile:
             with pytest.raises(FileNotFoundError, match="Data file not found"):
                 load_text_from_file(TEST_FILE_PATH, DELIMITER)
 
-    def test_empty_file(self, capsys):
+    def test_empty_file(self, caplog):
         """Test loading from an empty file returns empty list"""
         file_content = ""
 
@@ -65,11 +66,9 @@ class TestLoadStoriesFromFile:
                 stories = load_text_from_file(TEST_FILE_PATH, DELIMITER)
 
         assert stories == []
+        assert "Loaded 0 paragraphs" in caplog.text
 
-        captured = capsys.readouterr()
-        assert "Loaded 0 paragraphs" in captured.out
-
-    def test_max_stories_limit(self, capsys):
+    def test_max_stories_limit(self, caplog):
         """Test that max_paragraphs parameter limits the number of paragraphs loaded"""
         file_content = f"{SAMPLE_STORY_1}{DELIMITER}\n{SAMPLE_STORY_2}{DELIMITER}\n{SAMPLE_STORY_3}{DELIMITER}\n"
 
@@ -80,11 +79,9 @@ class TestLoadStoriesFromFile:
         assert len(stories) == 2
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
         assert stories[1] == f"{SAMPLE_STORY_2}{DELIMITER}"
+        assert "Loaded 2 paragraphs" in caplog.text
 
-        captured = capsys.readouterr()
-        assert "Loaded 2 paragraphs" in captured.out
-
-    def test_multiple_delimiters_on_same_line(self, capsys):
+    def test_multiple_delimiters_on_same_line(self):
         """Test handling multiple delimiters on a single line"""
         file_content = f"{SAMPLE_STORY_1}{DELIMITER}{SAMPLE_STORY_2}{DELIMITER}\n"
 
@@ -106,18 +103,14 @@ class TestLoadStoriesFromFile:
         with pytest.raises(ValueError, match="outside the project root"):
             load_text_from_file("/etc/passwd", DELIMITER)
 
-    def test_print_output_shows_relative_path(self, capsys):
-        """Test that printed output shows path relative to project root, not absolute"""
+    def test_log_output_shows_relative_path(self, caplog):
+        """Test that log output shows path relative to project root, not absolute"""
         file_content = f"{SAMPLE_STORY_1}{DELIMITER}\n"
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
                 load_text_from_file(TEST_FILE_PATH, DELIMITER)
 
-        captured = capsys.readouterr()
-        # Should show relative path like "data/test_file.txt"
-        assert TEST_FILE_PATH in captured.out
-        # Should NOT show absolute path with /Users/...
-        assert "/Users" not in captured.out
-        assert "Loading data from data/test_file.txt" in captured.out
-
+        assert TEST_FILE_PATH in caplog.text
+        assert "/Users" not in caplog.text
+        assert f"Loading data from {TEST_FILE_PATH}" in caplog.text

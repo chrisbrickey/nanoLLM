@@ -1,8 +1,12 @@
 """Data loading utilities for story datasets."""
 
+import logging
 from pathlib import Path
+
 import grain.python as pygrain
 import tiktoken
+
+logger = logging.getLogger(__name__)
 
 from src.config import validate_project_path, format_path_for_display
 from src.data.dataset import StoryDataset
@@ -41,7 +45,7 @@ def load_text_from_file(
     display_path = format_path_for_display(file_path)
 
     max_str = f"{max_paragraphs:,}" if max_paragraphs is not None else "all"
-    print(f"Loading data from {display_path} (max {max_str} paragraphs)")
+    logger.info("Loading data from %s (max %s paragraphs)", display_path, max_str)
 
     paragraphs, current_paragraph = [], []
     with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -72,7 +76,7 @@ def load_text_from_file(
             if story_text:
                 paragraphs .append(story_text + delimiter)
 
-    print(f"Loaded {len(paragraphs ):,} paragraphs")
+    logger.info("Loaded %s paragraphs", f"{len(paragraphs):,}")
     return paragraphs
 
 
@@ -111,7 +115,7 @@ def preprocess_data(
 
     # Calculate estimated batches per epoch
     estimated_batches_per_epoch = total_size // batch_size
-    print(f"Estimated batches per epoch: {estimated_batches_per_epoch:,}")
+    logger.debug("Estimated batches per epoch: %s", f"{estimated_batches_per_epoch:,}")
 
     # Create efficient dataset
     dataset = StoryDataset(list_of_paragraphs, maxlen, delimiter)
@@ -134,5 +138,5 @@ def preprocess_data(
         ]
     )
 
-    print(f"Created DataLoader with batch_size={batch_size}, maxlen={maxlen}")
+    logger.debug("Created DataLoader with batch_size=%d, maxlen=%d", batch_size, maxlen)
     return dataloader, estimated_batches_per_epoch
