@@ -6,11 +6,11 @@ from collections.abc import Generator, Iterator
 from pathlib import Path
 
 import numpy as np
-import flax.nnx as nnx
 import pytest
 
-from src.config import CHECKPOINTS_DIR, TrainingConfig
+from src.config import ModelConfig, TrainingConfig
 from src.model.model import NanoLLM
+from src.paths import CHECKPOINTS_DIR
 from src.training.trainer import Trainer
 
 # Small enough to run fast; large enough that loss reliably trends down.
@@ -23,7 +23,6 @@ NUM_BLOCKS = 1
 BATCH_SIZE = 4
 N_BATCHES = 8
 EPOCHS = 2
-SEED = 0
 
 
 class _FakeDataLoader:
@@ -48,15 +47,15 @@ def project_checkpoint_path() -> Generator[Path, None, None]:
 
 
 def _make_trainer(checkpoint_path: Path | None = None) -> Trainer:
-    model = NanoLLM(
+    model_config = ModelConfig(
         maxlen=MAXLEN,
         vocab_size=VOCAB_SIZE,
         embed_dim=EMBED_DIM,
         num_heads=NUM_HEADS,
         feed_forward_dim=FF_DIM,
         num_transformer_blocks=NUM_BLOCKS,
-        rngs=nnx.Rngs(SEED),
     )
+    model = NanoLLM(model_config)
     config = TrainingConfig(
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,

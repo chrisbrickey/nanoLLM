@@ -11,8 +11,9 @@ import numpy as np
 import flax.nnx as nnx
 import pytest
 
-from src.config import CHECKPOINTS_DIR, TrainingConfig
+from src.config import ModelConfig, TrainingConfig
 from src.model.model import NanoLLM
+from src.paths import CHECKPOINTS_DIR
 from src.training.trainer import Trainer
 
 MAXLEN = 4
@@ -23,7 +24,6 @@ FF_DIM = 16
 NUM_BLOCKS = 1
 BATCH_SIZE = 2
 N_BATCHES = 4  # yields 2 log entries with default log_every_n_steps=2
-SEED = 0
 
 
 class _FakeDataLoader:
@@ -39,16 +39,19 @@ class _FakeDataLoader:
             yield np.ones((self.maxlen, self.batch_size), dtype=np.int32)
 
 
-def _make_model() -> NanoLLM:
-    return NanoLLM(
+def _make_model_config() -> ModelConfig:
+    return ModelConfig(
         maxlen=MAXLEN,
         vocab_size=VOCAB_SIZE,
         embed_dim=EMBED_DIM,
         num_heads=NUM_HEADS,
         feed_forward_dim=FF_DIM,
         num_transformer_blocks=NUM_BLOCKS,
-        rngs=nnx.Rngs(SEED),
     )
+
+
+def _make_model() -> NanoLLM:
+    return NanoLLM(_make_model_config())
 
 
 def _make_config(**overrides: object) -> TrainingConfig:

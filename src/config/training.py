@@ -26,20 +26,3 @@ class TrainingConfig:
 
     # Logging
     log_every_n_steps: int = 2
-
-    def calculate_training_steps(self, batches_per_epoch: int) -> tuple[int, int]:
-        """
-        Calculate total training steps and warmup steps.
-
-        Args:
-            batches_per_epoch: Number of batches per epoch
-
-        Returns:
-            Tuple of (total_steps, warmup_steps)
-        """
-        total_steps = batches_per_epoch * self.epochs
-        warmup_steps = max(1, int(total_steps * self.warmup_rate))
-        return total_steps, warmup_steps
-
-
-training_config = TrainingConfig()

@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scripts.train import main
-from src.config import CHECKPOINTS_DIR, DATA_DIR, DEFAULT_CHECKPOINT_PATH, training_config
+from src.config import TrainingConfig
+from src.paths import CHECKPOINTS_DIR, DATA_DIR, DEFAULT_CHECKPOINT_PATH
 
 # Enough stories for at least one batch with batch_size=2
 _FAKE_STORIES = "\n".join(
@@ -104,7 +105,7 @@ class TestCliArguments:
 
     def test_default_shuffle_matches_training_config(self, run_cli) -> None:
         kwargs = run_cli()
-        assert kwargs["training_config"].shuffle == training_config.shuffle
+        assert kwargs["training_config"].shuffle == TrainingConfig().shuffle
 
     def test_checkpoint_path_passed_to_trainer(
         self, run_cli, checkpoint_path: Path

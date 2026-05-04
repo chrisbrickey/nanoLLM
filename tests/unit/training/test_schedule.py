@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import pytest
 
 from src.config import TrainingConfig
-from src.training.schedule import build_learning_rate_schedule
+from src.training.schedule import build_learning_rate_schedule, compute_step_counts
 
 TOTAL_STEPS = 100
 WARMUP_STEPS = 10
@@ -44,3 +44,18 @@ class TestBuildLearningRateSchedule:
         decay_steps = range(WARMUP_STEPS, TOTAL_STEPS + 1)
         values = [float(schedule(s)) for s in decay_steps]
         assert all(a >= b for a, b in zip(values, values[1:]))
+
+
+class TestComputeStepCounts:
+    def test_basic_counts(self) -> None:
+        config = TrainingConfig(epochs=3, warmup_rate=0.1)
+        total, warmup = compute_step_counts(config, batches_per_epoch=100)
+        assert total == 300
+        assert warmup == 30
+
+    def test_warmup_floor_is_one(self) -> None:
+        """warmup_steps is at least 1 even for very small datasets."""
+        config = TrainingConfig(epochs=1, warmup_rate=0.1)
+        total, warmup = compute_step_counts(config, batches_per_epoch=5)
+        assert total == 5
+        assert warmup >= 1

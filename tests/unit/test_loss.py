@@ -1,8 +1,8 @@
 """Unit tests for src/loss.py"""
 
 import jax.numpy as jnp
-import flax.nnx as nnx
 
+from src.config import ModelConfig
 from src.loss import cross_entropy_loss
 from src.model.model import NanoLLM
 
@@ -13,19 +13,18 @@ NUM_HEADS = 3
 FF_DIM = 16
 NUM_BLOCKS = 1
 BATCH_SIZE = 2
-SEED = 0
 
 
 def _make_model() -> NanoLLM:
-    return NanoLLM(
+    config = ModelConfig(
         maxlen=MAXLEN,
         vocab_size=VOCAB_SIZE,
         embed_dim=EMBED_DIM,
         num_heads=NUM_HEADS,
         feed_forward_dim=FF_DIM,
         num_transformer_blocks=NUM_BLOCKS,
-        rngs=nnx.Rngs(SEED),
     )
+    return NanoLLM(config)
 
 
 def _make_batch() -> tuple[jnp.ndarray, jnp.ndarray]:

@@ -18,21 +18,17 @@ import flax.nnx as nnx
 import jax
 
 from src.config import (
-    DEFAULT_CHECKPOINT_PATH,
-    TINYSTORIES_FILE,
+    ModelConfig,
     TokenizerConfig,
-    model_config,
-    training_config,
+    TrainingConfig,
 )
+from src.paths import DEFAULT_CHECKPOINT_PATH, TINYSTORIES_FILE
+from src.logging_setup import setup_logging
 from src.data.loader import load_text_from_file, preprocess_data
-from src.config.logging import setup_logging
 from src.model.model import NanoLLM
 from src.training.trainer import Trainer
 
 logger = logging.getLogger(__name__)
-
-_DELIMITER = "<|endoftext|>"
-_TOKENIZER_NAME = "gpt2"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -70,10 +66,13 @@ def main() -> None:
     if args.shuffle is not None:
         overrides["shuffle"] = args.shuffle
 
-    config = dataclasses.replace(training_config, **overrides)
+    config = dataclasses.replace(TrainingConfig(), **overrides)
 
     data_file = Path(args.data_file) if args.data_file else TINYSTORIES_FILE
     checkpoint_path = Path(args.checkpoint) if args.checkpoint else DEFAULT_CHECKPOINT_PATH
+
+    tokenizer_config = TokenizerConfig()
+    model_config = ModelConfig()
 
     logger.info(
         f"\n\n{'-' * 30}\n"
@@ -90,8 +89,6 @@ def main() -> None:
         config.batch_size, config.shuffle, config.seed, checkpoint_path,
     )
 
-    tokenizer_config = TokenizerConfig(delimiter=_DELIMITER, name=_TOKENIZER_NAME)
-
     try:
         stories = load_text_from_file(
             data_file,
@@ -103,21 +100,13 @@ def main() -> None:
             stories,
             batch_size=config.batch_size,
             maxlen=model_config.maxlen,
-            delimiter=tokenizer_config.delimiter,
+            tokenizer_config=tokenizer_config,
             shuffle=config.shuffle,
             seed=config.seed,
         )
 
         logger.info("Building model ...")
-        model = NanoLLM(
-            maxlen=model_config.maxlen,
-            vocab_size=model_config.vocab_size,
-            embed_dim=model_config.embed_dim,
-            num_heads=model_config.num_heads,
-            feed_forward_dim=model_config.feed_forward_dim,
-            num_transformer_blocks=model_config.num_transformer_blocks,
-            rngs=nnx.Rngs(config.seed),
-        )
+        model = NanoLLM(model_config)
         params = nnx.state(model, nnx.Param)
         param_count = sum(v.size for v in jax.tree_util.tree_leaves(params))
         logger.info("Model ready — %s parameters", f"{param_count:,}")

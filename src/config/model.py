@@ -28,6 +28,3 @@ class ModelConfig:
         """Validate configuration after initialization."""
         assert self.embed_dim % self.num_heads == 0, \
             f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
-
-
-model_config = ModelConfig()

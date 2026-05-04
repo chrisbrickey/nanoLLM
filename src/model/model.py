@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 import flax.nnx as nnx
 
-from src.config import model_config
+from src.config import ModelConfig
 from src.model.embeddings import TokenAndPositionEmbedding
 from src.model.blocks import TransformerBlock
 
@@ -16,45 +16,34 @@ class NanoLLM(nnx.Module):
     and an output layer to predict next tokens in a sequence.
     """
 
-    def __init__(
-        self,
-        maxlen: int = model_config.maxlen,
-        vocab_size: int = model_config.vocab_size,
-        embed_dim: int = model_config.embed_dim,
-        num_heads: int = model_config.num_heads,
-        feed_forward_dim: int = model_config.feed_forward_dim,
-        num_transformer_blocks: int = model_config.num_transformer_blocks,
-        *,
-        rngs: nnx.Rngs = nnx.Rngs(model_config.model_seed)
-    ) -> None:
+    def __init__(self, config: ModelConfig) -> None:
         """
         Initialize NanoLLM model.
 
         Args:
-            maxlen: Maximum sequence length
-            vocab_size: Size of vocabulary
-            embed_dim: Dimension of embeddings
-            num_heads: Number of attention heads per block
-            feed_forward_dim: Dimension of feed-forward layer
-            num_transformer_blocks: Number of transformer blocks to stack
-            rngs: Random number generator for initialization
+            config: Architecture configuration. For inference, this should be
+                reconstructed from checkpoint metadata so weight shapes match.
+                Set config.model_seed to control weight initialization.
         """
-        self.maxlen = maxlen
+        rngs = nnx.Rngs(config.model_seed)
+        self.maxlen = config.maxlen
 
         # create token and position vector embeddings
         self.embedding = TokenAndPositionEmbedding(
-            maxlen, vocab_size, embed_dim, rngs=rngs
+            config.maxlen, config.vocab_size, config.embed_dim, rngs=rngs
         )
 
         # applies num_transformer_blocks of transformer layers sequentially
         self.transformer_blocks = nnx.List([
-            TransformerBlock(embed_dim, num_heads, feed_forward_dim, rngs=rngs)
-            for _ in range(num_transformer_blocks)
+            TransformerBlock(
+                config.embed_dim, config.num_heads, config.feed_forward_dim, rngs=rngs
+            )
+            for _ in range(config.num_transformer_blocks)
         ])
 
         # output of dense vectors (hidden states) that capture a position's meaning
         self.output_layer = nnx.Linear(
-            embed_dim, vocab_size, use_bias=False, rngs=rngs
+            config.embed_dim, config.vocab_size, use_bias=False, rngs=rngs
         )
 
     def causal_attention_mask(self, seq_len: int) -> jnp.ndarray:

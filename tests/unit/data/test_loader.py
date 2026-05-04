@@ -7,7 +7,6 @@ from unittest.mock import mock_open, patch
 import pytest
 
 from src.data.loader import load_text_from_file
-from src.config import PROJECT_ROOT
 
 TEST_FILE_PATH = "data/test_file.txt"  # Relative to project root
 DELIMITER = "<|endoftext|>"
@@ -17,7 +16,7 @@ SAMPLE_STORY_3 = "Third test story goes here."
 
 
 class TestLoadStoriesFromFile:
-    """Test suite for load_stories_from_file utility function"""
+    """Test suite for load_text_from_file utility function"""
 
     @pytest.fixture(autouse=True)
     def _capture_logs(self, caplog: pytest.LogCaptureFixture) -> Generator[None, None, None]:

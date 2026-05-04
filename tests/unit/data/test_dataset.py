@@ -1,8 +1,9 @@
 """Unit tests for StoryDataset — tokenizer is mocked."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 import pytest
 
+from src.config import TokenizerConfig
 from src.data.dataset import StoryDataset
 
 SAMPLE_STORY_001 = "sample story 001"
@@ -10,6 +11,7 @@ SAMPLE_STORY_002 = "sample story 002 with additional content"
 TEST_DELIMITER = "<|delimiter|>"
 TEST_MAXLEN = 10
 DELIMITER_TOKEN = 999
+PAD_TOKEN_ID = 0
 
 
 def _make_mock_tokenizer() -> MagicMock:
@@ -19,23 +21,38 @@ def _make_mock_tokenizer() -> MagicMock:
     return tok
 
 
+def _make_tokenizer_config() -> TokenizerConfig:
+    return TokenizerConfig(
+        delimiter=TEST_DELIMITER, name="gpt2", pad_token_id=PAD_TOKEN_ID
+    )
+
+
 @pytest.fixture
 def mock_tokenizer() -> MagicMock:
     return _make_mock_tokenizer()
 
 
+def _build_dataset(
+    stories: list[str], mock_tok: MagicMock
+) -> StoryDataset:
+    """Build a StoryDataset whose TokenizerConfig.tokenizer property returns mock_tok."""
+    with patch.object(
+        TokenizerConfig, "tokenizer", new_callable=PropertyMock
+    ) as mock_property:
+        mock_property.return_value = mock_tok
+        # During __init__, encode() resolves the delimiter token first.
+        mock_tok.encode.return_value = [DELIMITER_TOKEN]
+        ds = StoryDataset(
+            stories=stories, maxlen=TEST_MAXLEN, tokenizer_config=_make_tokenizer_config()
+        )
+    # After construction, switch to length-based encoding for __getitem__ tests.
+    mock_tok.encode.side_effect = lambda text, allowed_special=None: list(range(len(text)))
+    return ds
+
+
 @pytest.fixture
 def dataset(mock_tokenizer: MagicMock) -> StoryDataset:
-    with patch("src.data.dataset.tiktoken.get_encoding", return_value=mock_tokenizer):
-        mock_tokenizer.encode.return_value = [DELIMITER_TOKEN]
-        ds = StoryDataset(
-            stories=[SAMPLE_STORY_001, SAMPLE_STORY_002],
-            maxlen=TEST_MAXLEN,
-            delimiter=TEST_DELIMITER,
-        )
-    ds.delimiter_token = DELIMITER_TOKEN
-    mock_tokenizer.encode.side_effect = lambda text, allowed_special=None: list(range(len(text)))
-    return ds
+    return _build_dataset([SAMPLE_STORY_001, SAMPLE_STORY_002], mock_tokenizer)
 
 
 class TestStoryDatasetLen:
@@ -54,26 +71,18 @@ class TestStoryDatasetGetitem:
 
     def test_truncates_long_sequence(self, mock_tokenizer: MagicMock) -> None:
         long_story = "x" * 50  # 50 tokens with mock
-        with patch("src.data.dataset.tiktoken.get_encoding", return_value=mock_tokenizer):
-            mock_tokenizer.encode.return_value = [DELIMITER_TOKEN]
-            ds = StoryDataset(stories=[long_story], maxlen=TEST_MAXLEN, delimiter=TEST_DELIMITER)
-        ds.delimiter_token = DELIMITER_TOKEN
-        mock_tokenizer.encode.side_effect = lambda text, allowed_special=None: list(range(len(text)))
+        ds = _build_dataset([long_story], mock_tokenizer)
 
         result = ds[0]
 
         assert len(result) == TEST_MAXLEN
         assert result == list(range(TEST_MAXLEN))
 
-    def test_pads_short_sequence_with_zeros(self, mock_tokenizer: MagicMock) -> None:
+    def test_pads_short_sequence_with_pad_token(self, mock_tokenizer: MagicMock) -> None:
         short_story = "abc"  # 3 tokens with mock
-        with patch("src.data.dataset.tiktoken.get_encoding", return_value=mock_tokenizer):
-            mock_tokenizer.encode.return_value = [DELIMITER_TOKEN]
-            ds = StoryDataset(stories=[short_story], maxlen=TEST_MAXLEN, delimiter=TEST_DELIMITER)
-        ds.delimiter_token = DELIMITER_TOKEN
-        mock_tokenizer.encode.side_effect = lambda text, allowed_special=None: list(range(len(text)))
+        ds = _build_dataset([short_story], mock_tokenizer)
 
         result = ds[0]
 
         assert result[:3] == [0, 1, 2]
-        assert result[3:] == [0] * (TEST_MAXLEN - 3)
+        assert result[3:] == [PAD_TOKEN_ID] * (TEST_MAXLEN - 3)

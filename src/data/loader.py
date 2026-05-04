@@ -4,11 +4,11 @@ import logging
 from pathlib import Path
 
 import grain.python as pygrain
-import tiktoken
 
 logger = logging.getLogger(__name__)
 
-from src.config import validate_project_path, format_path_for_display
+from src.config import TokenizerConfig
+from src.paths import validate_project_path, format_path_for_display
 from src.data.dataset import StoryDataset
 
 
@@ -84,9 +84,9 @@ def preprocess_data(
     list_of_paragraphs: list[str],
     batch_size: int,
     maxlen: int,
-    delimiter: str,
-    shuffle: bool = False,
-    seed: int = 42
+    tokenizer_config: TokenizerConfig,
+    shuffle: bool,
+    seed: int,
 ) -> tuple[pygrain.DataLoader, int]:
     """
     Preprocess data with memory-efficient chunk reading.
@@ -95,7 +95,7 @@ def preprocess_data(
         list_of_paragraphs: list of delimiter-separated strings
         batch_size: Batch size for training
         maxlen: Maximum sequence length
-        delimiter: Delimiter string that marks end of text
+        tokenizer_config: Tokenizer configuration (encoder, delimiter, pad token)
         shuffle: Whether to shuffle the data
         seed: Random seed for reproducibility
 
@@ -103,8 +103,7 @@ def preprocess_data(
         Tuple of (Grain DataLoader, estimated_batches_per_epoch)
 
     Raises:
-        FileNotFoundError: If the file does not exist
-        ValueError: If no valid stories found in the dataset or path escapes project root
+        ValueError: If no valid stories found in the dataset
     """
 
     total_size = len(list_of_paragraphs)
@@ -116,7 +115,7 @@ def preprocess_data(
     logger.debug("Estimated batches per epoch: %s", f"{estimated_batches_per_epoch:,}")
 
     # Create efficient dataset
-    dataset = StoryDataset(list_of_paragraphs, maxlen, delimiter)
+    dataset = StoryDataset(list_of_paragraphs, maxlen, tokenizer_config)
 
     # Configure sampler with sharding support
     #   num_epochs=1: one dataset pass per iteration; epoch repetition is the Trainer's responsibility

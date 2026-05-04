@@ -1,6 +1,6 @@
 """Dataset class for story data preprocessing."""
 
-import tiktoken
+from src.config import TokenizerConfig
 
 
 class StoryDataset:
@@ -15,8 +15,7 @@ class StoryDataset:
         self,
         stories: list[str],
         maxlen: int,
-        delimiter: str,
-        tokenizer_name: str = "gpt2"
+        tokenizer_config: TokenizerConfig,
     ) -> None:
         """
         Initialize dataset.
@@ -24,14 +23,13 @@ class StoryDataset:
         Args:
             stories: List of story strings
             maxlen: Maximum sequence length (for truncation and padding)
-            delimiter: Delimiter string to mark end of text
-            tokenizer_name: Name of tokenizer to use (default: "gpt2")
+            tokenizer_config: Source of tokenizer, delimiter, and pad_token_id
         """
         self.stories = stories
         self.maxlen = maxlen
-        self.delimiter = delimiter
-        self.tokenizer = tiktoken.get_encoding(tokenizer_name)
-        self.delimiter_token = self.tokenizer.encode(self.delimiter, allowed_special={self.delimiter})[0]
+        self.tokenizer = tokenizer_config.tokenizer
+        self.delimiter = tokenizer_config.delimiter
+        self.pad_token_id = tokenizer_config.pad_token_id
 
     def __len__(self) -> int:
         """Return number of stories in dataset."""
@@ -48,10 +46,14 @@ class StoryDataset:
             List of token IDs, truncated and padded to maxlen
         """
         story = self.stories[idx]
-        tokens = self.tokenizer.encode(story, allowed_special={self.delimiter})
+        tokens = self.tokenizer.encode(
+            story, allowed_special={self.delimiter}
+        )
 
         if len(tokens) > self.maxlen:
             tokens = tokens[:self.maxlen]
 
-        tokens.extend([0] * (self.maxlen - len(tokens)))
+        tokens.extend(
+            [self.pad_token_id] * (self.maxlen - len(tokens))
+        )
         return tokens

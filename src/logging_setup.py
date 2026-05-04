@@ -19,8 +19,9 @@ def setup_logging(level: str = "INFO") -> None:
         if type(handler).__module__.startswith("absl"):
             root.removeHandler(handler)
 
-    # Supress absl logging to reduce noisiness in logs, especially during training
+    # Suppress noisy and non-actionable JAX/absl logs
     logging.getLogger("absl").setLevel(logging.WARNING)
+    logging.getLogger("jax._src.xla_bridge").setLevel(logging.WARNING)
 
     logging.basicConfig(
         level=numeric_level,

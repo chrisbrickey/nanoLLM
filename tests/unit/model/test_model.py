@@ -1,9 +1,9 @@
 """Unit tests for src/model/model.py"""
 
 import jax.numpy as jnp
-import flax.nnx as nnx
 import pytest
 
+from src.config import ModelConfig
 from src.model.model import NanoLLM
 
 # Test constants - generic sequence lengths
@@ -18,29 +18,30 @@ SMALL_EMBED_DIM = 12  # divisible by SMALL_NUM_HEADS
 SMALL_NUM_HEADS = 3
 SMALL_FF_DIM = 16
 SMALL_NUM_BLOCKS = 1
-SEED = 0
 
 
-@pytest.fixture
-def small_model() -> NanoLLM:
-    return NanoLLM(
+def _small_config() -> ModelConfig:
+    return ModelConfig(
         maxlen=SMALL_MAXLEN,
         vocab_size=SMALL_VOCAB_SIZE,
         embed_dim=SMALL_EMBED_DIM,
         num_heads=SMALL_NUM_HEADS,
         feed_forward_dim=SMALL_FF_DIM,
         num_transformer_blocks=SMALL_NUM_BLOCKS,
-        rngs=nnx.Rngs(SEED),
     )
+
+
+@pytest.fixture
+def small_model() -> NanoLLM:
+    return NanoLLM(_small_config())
 
 
 class TestCausalAttentionMask:
     """Test suite for NanoLLM.causal_attention_mask() method"""
 
-    def test_returns_lower_triangular_matrix(self):
+    def test_returns_lower_triangular_matrix(self, small_model: NanoLLM) -> None:
         """Test that mask is lower triangular (1s below/on diagonal, 0s above)"""
-        model = NanoLLM()
-        mask = model.causal_attention_mask(SEQ_LENGTH_SMALL)
+        mask = small_model.causal_attention_mask(SEQ_LENGTH_SMALL)
 
         # Verify it's lower triangular by checking upper triangle is all zeros
         for i in range(SEQ_LENGTH_SMALL):
@@ -50,21 +51,18 @@ class TestCausalAttentionMask:
                 else:  # Lower triangle + diagonal
                     assert mask[i, j] == 1, f"Expected 1 at position ({i}, {j}), got {mask[i, j]}"
 
-    def test_correct_shape_for_various_sequence_lengths(self):
+    def test_correct_shape_for_various_sequence_lengths(self, small_model: NanoLLM) -> None:
         """Test that mask shape matches (seq_len, seq_len) for different lengths"""
-        model = NanoLLM()
-
         test_lengths = [SEQ_LENGTH_SMALL, SEQ_LENGTH_MEDIUM, SEQ_LENGTH_LARGE]
 
         for seq_len in test_lengths:
-            mask = model.causal_attention_mask(seq_len)
+            mask = small_model.causal_attention_mask(seq_len)
             assert mask.shape == (seq_len, seq_len), \
                 f"Expected shape ({seq_len}, {seq_len}), got {mask.shape}"
 
-    def test_mask_values_are_binary(self):
+    def test_mask_values_are_binary(self, small_model: NanoLLM) -> None:
         """Test that mask contains only 0s and 1s"""
-        model = NanoLLM()
-        mask = model.causal_attention_mask(SEQ_LENGTH_MEDIUM)
+        mask = small_model.causal_attention_mask(SEQ_LENGTH_MEDIUM)
 
         # Check all values are either 0 or 1
         unique_values = jnp.unique(mask)
@@ -72,10 +70,9 @@ class TestCausalAttentionMask:
         assert all(val in [0, 1] for val in unique_values), \
             f"Expected only 0s and 1s, got {unique_values}"
 
-    def test_diagonal_elements_are_ones(self):
+    def test_diagonal_elements_are_ones(self, small_model: NanoLLM) -> None:
         """Test that diagonal elements are 1 (tokens can attend to themselves)"""
-        model = NanoLLM()
-        mask = model.causal_attention_mask(SEQ_LENGTH_SMALL)
+        mask = small_model.causal_attention_mask(SEQ_LENGTH_SMALL)
 
         # Check diagonal is all 1s
         diagonal = jnp.diag(mask)

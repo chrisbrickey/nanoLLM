@@ -13,8 +13,9 @@ import flax.nnx as nnx
 import pytest
 
 from src.checkpoint import load_checkpoint, save_checkpoint
-from src.config import CHECKPOINTS_DIR
+from src.config import ModelConfig
 from src.model.model import NanoLLM
+from src.paths import CHECKPOINTS_DIR
 
 MAXLEN = 4
 VOCAB_SIZE = 50
@@ -25,15 +26,16 @@ NUM_BLOCKS = 1
 
 
 def _make_model(seed: int = 0) -> NanoLLM:
-    return NanoLLM(
+    config = ModelConfig(
         maxlen=MAXLEN,
         vocab_size=VOCAB_SIZE,
         embed_dim=EMBED_DIM,
         num_heads=NUM_HEADS,
         feed_forward_dim=FF_DIM,
         num_transformer_blocks=NUM_BLOCKS,
-        rngs=nnx.Rngs(seed),
+        model_seed=seed,
     )
+    return NanoLLM(config)
 
 
 @pytest.fixture

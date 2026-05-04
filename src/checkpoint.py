@@ -12,7 +12,7 @@ import flax.nnx as nnx
 logger = logging.getLogger(__name__)
 import orbax.checkpoint as ocp
 
-from src.config import validate_project_path
+from src.paths import validate_project_path
 
 
 def save_checkpoint(model: nnx.Module, path: Path, *, force: bool = True) -> None:

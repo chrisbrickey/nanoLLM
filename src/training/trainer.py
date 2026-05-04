@@ -10,7 +10,7 @@ import optax
 from src.checkpoint import save_checkpoint
 from src.config import TrainingConfig
 from src.model.model import NanoLLM
-from src.training.schedule import build_learning_rate_schedule
+from src.training.schedule import build_learning_rate_schedule, compute_step_counts
 from src.training.step import make_train_step
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ class Trainer:
         self.dataloader = dataloader
         self.checkpoint_path = checkpoint_path
 
-        total_steps, warmup_steps = training_config.calculate_training_steps(batches_per_epoch)
+        total_steps, warmup_steps = compute_step_counts(training_config, batches_per_epoch)
         self.schedule = build_learning_rate_schedule(training_config, total_steps, warmup_steps)
 
         self.optimizer = nnx.ModelAndOptimizer(

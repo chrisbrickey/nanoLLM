@@ -3,6 +3,23 @@ import optax
 from src.config import TrainingConfig
 
 
+def compute_step_counts(
+    training_config: TrainingConfig, batches_per_epoch: int
+) -> tuple[int, int]:
+    """Calculate total training steps and warmup steps from a TrainingConfig.
+
+    Args:
+        training_config: TrainingConfig providing epochs and warmup_rate.
+        batches_per_epoch: Number of batches per epoch.
+
+    Returns:
+        Tuple of (total_steps, warmup_steps). warmup_steps is at least 1.
+    """
+    total_steps = batches_per_epoch * training_config.epochs
+    warmup_steps = max(1, int(total_steps * training_config.warmup_rate))
+    return total_steps, warmup_steps
+
+
 def build_learning_rate_schedule(
     training_config: TrainingConfig,
     total_steps: int,

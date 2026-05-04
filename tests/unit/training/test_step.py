@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 import optax
 
+from src.config import ModelConfig
 from src.loss import cross_entropy_loss
 from src.model.model import NanoLLM
 from src.training.step import make_train_step
@@ -16,19 +17,18 @@ NUM_HEADS = 3
 FF_DIM = 16
 NUM_BLOCKS = 1
 BATCH_SIZE = 2
-SEED = 0
 
 
-def _make_model(seed: int = SEED) -> NanoLLM:
-    return NanoLLM(
+def _make_model() -> NanoLLM:
+    config = ModelConfig(
         maxlen=MAXLEN,
         vocab_size=VOCAB_SIZE,
         embed_dim=EMBED_DIM,
         num_heads=NUM_HEADS,
         feed_forward_dim=FF_DIM,
         num_transformer_blocks=NUM_BLOCKS,
-        rngs=nnx.Rngs(seed),
     )
+    return NanoLLM(config)
 
 
 def _make_optimizer(model: NanoLLM) -> nnx.ModelAndOptimizer:
