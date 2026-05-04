@@ -67,9 +67,8 @@ nanoLLM/
 ├── scripts/             # CLI entrypoints for training, inference, etc. 
 │ 
 ├── src/                 
-│    ├── config.py       # cross-cutting settings     
-│    │ 
 │    ├── data/
+│    ├── config/
 │    ├── inference/ 
 │    ├── model/
 │    └── training/                                                                                      
