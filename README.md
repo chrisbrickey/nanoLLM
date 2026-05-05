@@ -61,17 +61,17 @@ nanoLLM/
 ├── pyproject.toml       # UV dependencies and package configuration
 │ 
 ├── checkpoints/         # saved model weights (gitignored)
-├── data/                # training data and processed datasets (gitignored)
+├── data/                # raw data and processed datasets (gitignored)
 │ 
 ├── notebooks/           # interactive notebooks for building out components*
 ├── scripts/             # CLI entrypoints for training, inference, etc. 
 │ 
-├── src/                 
-│    ├── data/
-│    ├── config/
-│    ├── inference/ 
-│    ├── model/
-│    └── training/                                                                                      
+├── src/   
+│    ├── config/              
+│    ├── data/           # processeses the training data and datasets
+│    ├── inference/      # orchestrates text generation
+│    ├── model/          # defines the transformer architecture
+│    └── training/       # orchestrates training of the model                                                                                
 │ 
 └── tests/               # unit and integration testing on python modules and scripts
 ```
@@ -93,20 +93,20 @@ uv sync
 uv run nanollm-train
 
 # run with some overrides
-uv run nanollm-train --num-epochs 5 --batch-size 64 --checkpoint my_run.orbax
+uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint {desired_directory}/{unique_filename}.orbax
 ```
 
 #### Optional Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--batch-size` | Number of samples per training batch | `32` |
-| `--epochs` | Number of full passes through the training data | `3` |
-| `--max-stories` | Maximum number of stories to load from the data file | `100` |
-| `--seed` | Random seed for reproducibility | `42` |
-| `--shuffle` / `--no-shuffle` | Enable or disable dataset shuffling | `False` |
-| `--data-file` | Path to the training data file | `data/TinyStories-1000.txt` |
-| `--checkpoint` | Path to save the training checkpoint | `checkpoints/nano_checkpoint.orbax` |
+| Flag | Description | Default                                 |
+|------|-------------|-----------------------------------------|
+| `--batch-size` | Number of samples per training batch | `32`                                    |
+| `--epochs` | Number of full passes through the training data | `3`                                     |
+| `--max-stories` | Maximum number of stories to load from the data file | `100`                                   |
+| `--seed` | Random seed for reproducibility | `42`                                    |
+| `--shuffle` / `--no-shuffle` | Enable or disable dataset shuffling | `False`                                 |
+| `--data-file` | Path to the training data file | `data/TinyStories-1000.txt`             |
+| `--checkpoint` | Path to save the training checkpoint | `checkpoints/NanoLLM_{timestamp}.orbax` |
 
 
 
