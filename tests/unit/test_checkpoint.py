@@ -1,6 +1,7 @@
 """Unit tests for src/checkpoint.py"""
 
 import logging
+import os
 import shutil
 import uuid
 from collections.abc import Generator
@@ -12,7 +13,7 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 import pytest
 
-from src.checkpoint import load_checkpoint, save_checkpoint
+from src.checkpoint import get_latest_checkpoint, load_checkpoint, save_checkpoint
 from src.config import ModelConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
@@ -71,6 +72,66 @@ class TestSaveCheckpoint:
         model = _make_model()
         with pytest.raises(ValueError, match="outside the project root"):
             save_checkpoint(model, Path("/tmp/outside.orbax"))
+
+    def test_raises_oserror_when_mkdir_fails(self) -> None:
+        model = _make_model()
+        some_valid_path = CHECKPOINTS_DIR / "unit_test_mkdir_fail.orbax"
+        with patch("pathlib.Path.mkdir", side_effect=OSError("disk full")):
+            with pytest.raises(OSError, match="Failed to create checkpoint directory"):
+                save_checkpoint(model, some_valid_path)
+
+
+class TestGetLatestCheckpoint:
+    def test_returns_none_when_directory_does_not_exist(self, tmp_path: Path) -> None:
+        nonexistent = tmp_path / "no_such_dir"
+        assert get_latest_checkpoint(nonexistent) is None
+
+    def test_returns_none_when_directory_is_empty(self, tmp_path: Path) -> None:
+        assert get_latest_checkpoint(tmp_path) is None
+
+    def test_returns_none_when_no_orbax_files(self, tmp_path: Path) -> None:
+        (tmp_path / "some_file.txt").write_text("data")
+        assert get_latest_checkpoint(tmp_path) is None
+
+    def test_returns_single_file(self, tmp_path: Path) -> None:
+        checkpoint = tmp_path / "model_001.orbax"
+        checkpoint.write_text("checkpoint data")
+        assert get_latest_checkpoint(tmp_path) == checkpoint
+
+    def test_returns_most_recently_modified_file(self, tmp_path: Path) -> None:
+        older = tmp_path / "model_old.orbax"
+        newer = tmp_path / "model_new.orbax"
+        older.write_text("old data")
+        newer.write_text("new data")
+        # Set older mtime to the past explicitly
+        os.utime(older, (1_000_000, 1_000_000))
+        os.utime(newer, (2_000_000, 2_000_000))
+        assert get_latest_checkpoint(tmp_path) == newer
+
+    def test_ignores_non_orbax_files(self, tmp_path: Path) -> None:
+        orbax_file = tmp_path / "model_001.orbax"
+        text_file = tmp_path / "notes.txt"
+        orbax_file.write_text("checkpoint data")
+        text_file.write_text("some notes")
+        assert get_latest_checkpoint(tmp_path) == orbax_file
+
+    def test_skips_file_with_oserror_on_stat(self, tmp_path: Path) -> None:
+        good_file = tmp_path / "model_good.orbax"
+        bad_file = tmp_path / "model_bad.orbax"
+        good_file.write_text("good checkpoint")
+        bad_file.write_text("bad checkpoint")
+
+        original_stat = Path.stat
+
+        def patched_stat(self: Path, **kwargs: object) -> object:
+            if self == bad_file:
+                raise OSError("permission denied")
+            return original_stat(self, **kwargs)
+
+        with patch.object(Path, "stat", patched_stat):
+            result = get_latest_checkpoint(tmp_path)
+
+        assert result == good_file
 
 
 class TestLoadCheckpoint:

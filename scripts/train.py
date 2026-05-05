@@ -22,7 +22,8 @@ from src.config import (
     TokenizerConfig,
     TrainingConfig,
 )
-from src.paths import DEFAULT_CHECKPOINT_PATH, TINYSTORIES_FILE
+from src.checkpoint import default_checkpoint_path
+from src.paths import DEFAULT_DATA_FILE
 from src.logging_setup import setup_logging
 from src.data.loader import load_text_from_file, preprocess_data
 from src.model.model import NanoLLM
@@ -68,8 +69,8 @@ def main() -> None:
 
     config = dataclasses.replace(TrainingConfig(), **overrides)
 
-    data_file = Path(args.data_file) if args.data_file else TINYSTORIES_FILE
-    checkpoint_path = Path(args.checkpoint) if args.checkpoint else DEFAULT_CHECKPOINT_PATH
+    data_file = Path(args.data_file) if args.data_file else DEFAULT_DATA_FILE
+    checkpoint_path = Path(args.checkpoint) if args.checkpoint else default_checkpoint_path(NanoLLM.__name__)
 
     tokenizer_config = TokenizerConfig()
     model_config = ModelConfig()
@@ -130,6 +131,9 @@ def main() -> None:
         logger.error("%s", e)
         sys.exit(1)
     except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+    except OSError as e:
         logger.error("%s", e)
         sys.exit(1)
 

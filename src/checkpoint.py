@@ -5,6 +5,7 @@ Save and load model checkpoints. Used by training (save/resume) and inference (l
 """
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import flax.nnx as nnx
@@ -12,16 +13,38 @@ import flax.nnx as nnx
 logger = logging.getLogger(__name__)
 import orbax.checkpoint as ocp
 
-from src.paths import validate_project_path
+from src.paths import CHECKPOINTS_DIR, validate_project_path
+
+
+def default_checkpoint_path(model_name: str = "NanoLLM") -> Path:
+    """Return a timestamped checkpoint path under CHECKPOINTS_DIR."""
+    return CHECKPOINTS_DIR / f"{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.orbax"
 
 
 def save_checkpoint(model: nnx.Module, path: Path, *, force: bool = True) -> None:
     """Save model state to an orbax checkpoint."""
     validated_path = validate_project_path(path)
+    try:
+        validated_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise OSError(f"Failed to create checkpoint directory '{validated_path.parent}': {e}") from e
     logger.info("Saving checkpoint to %s", validated_path)
     checkpointer = ocp.PyTreeCheckpointer()
     checkpointer.save(validated_path, nnx.state(model), force=force)
     logger.info("Checkpoint saved.")
+
+
+def get_latest_checkpoint(directory: Path = CHECKPOINTS_DIR) -> Path | None:
+    """Return the most recently modified .orbax checkpoint in directory, or None."""
+    if not directory.exists():
+        return None
+    candidates: list[tuple[float, Path]] = []
+    for p in directory.glob("*.orbax"):
+        try:
+            candidates.append((p.stat().st_mtime, p))
+        except OSError:
+            continue
+    return max(candidates, key=lambda t: t[0])[1] if candidates else None
 
 
 def load_checkpoint(model: nnx.Module, path: Path) -> nnx.Module:

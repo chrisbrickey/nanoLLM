@@ -2,18 +2,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
+CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_RAW_DIR = DATA_DIR / "raw"
-DATA_PROCESSED_DIR = DATA_DIR / "processed"
-CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"
-CONFIGS_DIR = PROJECT_ROOT / "configs"
-NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
-
-CHECKPOINTS_DIR.mkdir(exist_ok=True)
-DATA_DIR.mkdir(exist_ok=True)
-
-TINYSTORIES_FILE = DATA_DIR / "TinyStories-1000.txt"
-DEFAULT_CHECKPOINT_PATH = CHECKPOINTS_DIR / "nano_checkpoint.orbax"
+DEFAULT_DATA_FILE = DATA_RAW_DIR / "TinyStories-1000.txt"
+# DATA_PROCESSED_DIR = DATA_DIR / "processed" # future feature for processing larger datasets
 
 
 def validate_project_path(file_path: str | Path) -> Path:

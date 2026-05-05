@@ -4,6 +4,7 @@ import logging
 import shutil
 import uuid
 from collections.abc import Generator
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,7 +12,7 @@ import pytest
 
 from scripts.train import main
 from src.config import TrainingConfig
-from src.paths import CHECKPOINTS_DIR, DATA_DIR, DEFAULT_CHECKPOINT_PATH
+from src.paths import CHECKPOINTS_DIR, DATA_DIR
 
 # Enough stories for at least one batch with batch_size=2
 _FAKE_STORIES = "\n".join(
@@ -114,8 +115,12 @@ class TestCliArguments:
         assert kwargs["checkpoint_path"] == checkpoint_path
 
     def test_default_checkpoint_path(self, run_cli) -> None:
-        kwargs = run_cli()
-        assert kwargs["checkpoint_path"] == DEFAULT_CHECKPOINT_PATH
+        fixed_dt = datetime(2026, 1, 15, 10, 30, 45)
+        with patch("src.checkpoint.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_dt
+            kwargs = run_cli()
+        expected = CHECKPOINTS_DIR / "NanoLLM_20260115_103045.orbax"
+        assert kwargs["checkpoint_path"] == expected
 
 
 class TestCliErrorHandling:
@@ -137,5 +142,24 @@ class TestCliErrorHandling:
         with patch("sys.argv", argv):
             with pytest.raises(SystemExit) as exc_info:
                 main()
+        assert exc_info.value.code == 1
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    def test_oserror_during_training_exits_1_with_error_message(
+        self, caplog, data_file: Path
+    ) -> None:
+        checkpoint = CHECKPOINTS_DIR / "cli_test_oserror.orbax"
+        argv = [
+            "nanollm-train",
+            "--data-file", str(data_file),
+            "--epochs", "1",
+            "--batch-size", "2",
+            "--checkpoint", str(checkpoint),
+        ]
+        with patch("scripts.train.Trainer") as MockTrainer:
+            MockTrainer.return_value.train.side_effect = OSError("disk full")
+            with patch("sys.argv", argv):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
         assert exc_info.value.code == 1
         assert any(r.levelno == logging.ERROR for r in caplog.records)
