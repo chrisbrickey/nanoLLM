@@ -14,7 +14,17 @@ def compute_step_counts(
 
     Returns:
         Tuple of (total_steps, warmup_steps). warmup_steps is at least 1.
+
+    Raises:
+        ValueError: If batches_per_epoch <= 0. A zero-batch schedule degenerates
+            silently in optax; reject it at the boundary with a hint about the
+            likely cause (dataset smaller than batch_size with drop_remainder=True).
     """
+    if batches_per_epoch <= 0:
+        raise ValueError(
+            f"batches_per_epoch must be > 0, got {batches_per_epoch}; "
+            "check that dataset_size >= batch_size with drop_remainder=True"
+        )
     total_steps = batches_per_epoch * training_config.epochs
     warmup_steps = max(1, int(total_steps * training_config.warmup_rate))
     return total_steps, warmup_steps

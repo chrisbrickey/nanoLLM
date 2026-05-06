@@ -70,9 +70,16 @@ class NanoLLM(nnx.Module):
             Logits of shape (batch_size, seq_len, vocab_size)
         """
 
+        # Python-side static-shape check (not a traced JAX op) to surface a clear
+        # error before the position-embedding lookup raises an opaque index error.
+        seq_len = token_ids.shape[1]
+        if seq_len > self.maxlen:
+            raise ValueError(
+                f"seq_len ({seq_len}) exceeds model maxlen ({self.maxlen})"
+            )
+
         x = self.embedding(token_ids)
 
-        seq_len = token_ids.shape[1]
         mask = self.causal_attention_mask(seq_len)
         for block in self.transformer_blocks:
             x = block(x, mask=mask)

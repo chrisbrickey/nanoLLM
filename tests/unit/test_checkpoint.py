@@ -140,6 +140,24 @@ class TestLoadCheckpoint:
         with pytest.raises(ValueError, match="outside the project root"):
             load_checkpoint(model, Path("/tmp/outside.orbax"))
 
+    def test_rejects_missing_file(self) -> None:
+        model = _make_model()
+        missing_path = CHECKPOINTS_DIR / f"does_not_exist_{uuid.uuid4().hex[:8]}.orbax"
+        with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
+            load_checkpoint(model, missing_path)
+
+    def test_wraps_orbax_errors_as_value_error(self, project_checkpoint_path: Path) -> None:
+        """Underlying orbax exceptions surface as a single ValueError so callers have one error path."""
+        model = _make_model()
+        # Create a directory at the path so existence check passes; orbax will then fail to restore it.
+        project_checkpoint_path.mkdir(parents=True, exist_ok=True)
+        with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
+            mock_instance = MagicMock()
+            mock_instance.restore.side_effect = KeyError("missing tree node")
+            MockCheckpointer.return_value = mock_instance
+            with pytest.raises(ValueError, match="Failed to load checkpoint"):
+                load_checkpoint(model, project_checkpoint_path)
+
 
 class TestSaveLoadRoundTrip:
     def test_restored_model_params_match_original(

@@ -98,3 +98,10 @@ class TestNanoLLMForwardPass:
         ids_a = jnp.zeros((1, SMALL_MAXLEN), dtype=jnp.int32)
         ids_b = jnp.ones((1, SMALL_MAXLEN), dtype=jnp.int32)
         assert not jnp.allclose(small_model(ids_a), small_model(ids_b))
+
+    def test_rejects_seq_len_exceeding_maxlen(self, small_model: NanoLLM) -> None:
+        """Inputs longer than maxlen surface a clear error instead of a cryptic
+        position-embedding index error from inside the embedding layer."""
+        too_long = jnp.zeros((1, SMALL_MAXLEN + 1), dtype=jnp.int32)
+        with pytest.raises(ValueError, match="seq_len"):
+            small_model(too_long)

@@ -122,3 +122,16 @@ class TestGenerateTextPadding:
 
         call_args = mock_model.call_args[0][0]
         assert call_args.shape == (1, MAXLEN)
+
+
+class TestGenerateTextValidation:
+    def test_rejects_empty_start_tokens(
+        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock
+    ) -> None:
+        with pytest.raises(ValueError, match="start_tokens"):
+            generate_text(
+                model=mock_model,
+                tokenizer_config=mock_tokenizer_config,
+                inference_config=InferenceConfig(max_new_tokens=5, seed=SEED),
+                start_tokens=[],
+            )

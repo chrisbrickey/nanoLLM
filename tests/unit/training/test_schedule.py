@@ -59,3 +59,10 @@ class TestComputeStepCounts:
         total, warmup = compute_step_counts(config, batches_per_epoch=5)
         assert total == 5
         assert warmup >= 1
+
+    @pytest.mark.parametrize("batches_per_epoch", [0, -1])
+    def test_rejects_non_positive_batches_per_epoch(self, batches_per_epoch: int) -> None:
+        """compute_step_counts must fail fast rather than produce a degenerate zero-step schedule."""
+        config = TrainingConfig(epochs=1, warmup_rate=0.1)
+        with pytest.raises(ValueError, match="batches_per_epoch"):
+            compute_step_counts(config, batches_per_epoch=batches_per_epoch)

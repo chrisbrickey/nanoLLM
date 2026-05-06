@@ -29,7 +29,13 @@ def generate_text(
 
     Returns:
         Generated text string including the start tokens
+
+    Raises:
+        ValueError: If start_tokens is empty.
     """
+
+    if not start_tokens:
+        raise ValueError("start_tokens must be a non-empty list of token IDs")
 
     tokenizer = tokenizer_config.tokenizer
     delimiter = tokenizer_config.delimiter

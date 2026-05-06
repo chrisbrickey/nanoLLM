@@ -88,6 +88,17 @@ class TestTrainerInit:
         assert isinstance(trainer.metrics, nnx.MultiMetric)
         assert callable(trainer.train_step)
 
+    @pytest.mark.parametrize("batches_per_epoch", [0, -1])
+    def test_rejects_non_positive_batches_per_epoch(self, batches_per_epoch: int) -> None:
+        """Defense-in-depth check at the Trainer's public boundary."""
+        with pytest.raises(ValueError, match="batches_per_epoch"):
+            Trainer(
+                model=_make_model(),
+                training_config=_make_config(),
+                dataloader=_make_dataloader(),
+                batches_per_epoch=batches_per_epoch,
+            )
+
 
 class TestTrainerTrain:
     def test_returns_populated_metrics_history(self, caplog: pytest.LogCaptureFixture) -> None:

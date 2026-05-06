@@ -127,13 +127,7 @@ def main() -> None:
             f"{'-' * 30}\n\n"
         )
 
-    except FileNotFoundError as e:
-        logger.error("%s", e)
-        sys.exit(1)
-    except ValueError as e:
-        logger.error("%s", e)
-        sys.exit(1)
-    except OSError as e:
+    except (FileNotFoundError, ValueError, OSError) as e:
         logger.error("%s", e)
         sys.exit(1)
 

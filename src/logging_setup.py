@@ -5,7 +5,12 @@ import logging
 
 def setup_logging(level: str = "INFO") -> None:
     """Configure the root logger. Call once at the application entry point."""
-    numeric_level = getattr(logging, level.upper())
+    numeric_level = getattr(logging, level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(
+            f"Invalid log level: {level!r}. "
+            "Expected one of DEBUG, INFO, WARNING, ERROR, CRITICAL."
+        )
     root = logging.getLogger()
     root.setLevel(numeric_level)
 

@@ -48,11 +48,24 @@ def get_latest_checkpoint(directory: Path = CHECKPOINTS_DIR) -> Path | None:
 
 
 def load_checkpoint(model: nnx.Module, path: Path) -> nnx.Module:
-    """Restore model state from an orbax checkpoint. Returns the updated model."""
+    """Restore model state from an orbax checkpoint. Returns the updated model.
+
+    Raises:
+        FileNotFoundError: If the checkpoint path does not exist.
+        ValueError: If the underlying restore fails (corrupt file, structure
+            mismatch, etc.). Orbax raises a mix of error types depending on the
+            failure mode; presenting one consistent ValueError gives callers a
+            single error path.
+    """
     validated_path = validate_project_path(path)
+    if not validated_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found at {validated_path}")
     logger.info("Loading checkpoint from %s", validated_path)
     checkpointer = ocp.PyTreeCheckpointer()
-    restored_state = checkpointer.restore(validated_path, item=nnx.state(model))
+    try:
+        restored_state = checkpointer.restore(validated_path, item=nnx.state(model))
+    except (FileNotFoundError, ValueError, KeyError) as e:
+        raise ValueError(f"Failed to load checkpoint at {validated_path}: {e}") from e
     nnx.update(model, restored_state)
     logger.info("Checkpoint loaded.")
     return model

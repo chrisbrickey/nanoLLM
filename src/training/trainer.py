@@ -28,6 +28,11 @@ class Trainer:
         checkpoint_path: Path | None = None,
     ) -> None:
 
+        if batches_per_epoch <= 0:
+            raise ValueError(
+                f"batches_per_epoch must be > 0, got {batches_per_epoch}"
+            )
+
         self.model = model
         self.training_config = training_config
         self.dataloader = dataloader
@@ -68,7 +73,7 @@ class Trainer:
 
                 if (step + 1) % self.training_config.log_every_n_steps == 0:
                     for metric, value in self.metrics.compute().items():
-                        metrics_history[f"train_{metric}"].append(float(value))
+                        metrics_history.setdefault(f"train_{metric}", []).append(float(value))
                     self.metrics.reset()
 
                     current_learning_rate = self.schedule(step)
