@@ -22,3 +22,9 @@ class InferenceConfig:
     max_new_tokens: int = 50
     temperature: float = 1.0
     seed: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_new_tokens <= 0:
+            raise ValueError(f"max_new_tokens must be > 0, got {self.max_new_tokens}")
+        if self.temperature <= 0.0:
+            raise ValueError(f"temperature must be > 0.0, got {self.temperature}")

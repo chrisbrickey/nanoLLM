@@ -19,6 +19,16 @@ class TokenizerConfig:
     name: str = "gpt2"
     pad_token_id: int = 0
 
+    def __post_init__(self) -> None:
+        if not self.delimiter:
+            raise ValueError("delimiter must be a non-empty string")
+        if self.pad_token_id < 0:
+            raise ValueError(f"pad_token_id must be >= 0, got {self.pad_token_id}")
+        try:
+            tiktoken.get_encoding(self.name)
+        except (ValueError, KeyError) as e:
+            raise ValueError(f"Unknown tiktoken encoding name: {self.name!r} ({e})") from e
+
     @property
     def tokenizer(self) -> tiktoken.Encoding:
         """Get the tokenizer instance."""

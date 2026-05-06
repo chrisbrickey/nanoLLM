@@ -49,6 +49,19 @@ class TestTokenizerConfig:
         config = TokenizerConfig(delimiter=test_delimiter, name="gpt2")
         assert config.end_token == test_delimiter
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            (dict(delimiter=""), "delimiter"),
+            (dict(pad_token_id=-1), "pad_token_id"),
+            (dict(name="not-a-real-encoding-xyz"), "name"),
+        ],
+    )
+    def test_rejects_invalid_values(self, kwargs: dict, match: str) -> None:
+        """TokenizerConfig should raise ValueError on invalid fields, naming the offending field."""
+        with pytest.raises(ValueError, match=match):
+            TokenizerConfig(**kwargs)
+
 
 class TestModelConfig:
     """Test suite for ModelConfig dataclass"""
@@ -60,8 +73,8 @@ class TestModelConfig:
         assert config.num_heads == 6
 
     def test_validation_fails_when_embed_dim_not_divisible_by_num_heads(self) -> None:
-        """Test that __post_init__ raises AssertionError for invalid dimensions."""
-        with pytest.raises(AssertionError, match="embed_dim .* must be divisible by num_heads"):
+        """Test that __post_init__ raises ValueError for non-divisible dimensions."""
+        with pytest.raises(ValueError, match="embed_dim .* must be divisible by num_heads"):
             ModelConfig(embed_dim=100, num_heads=7)
 
     def test_default_values(self) -> None:
@@ -79,6 +92,23 @@ class TestModelConfig:
 
         assert not hasattr(config_module, "model_config")
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            (dict(maxlen=0), "maxlen"),
+            (dict(maxlen=-1), "maxlen"),
+            (dict(vocab_size=0), "vocab_size"),
+            (dict(embed_dim=0, num_heads=1), "embed_dim"),
+            (dict(num_heads=0), "num_heads"),
+            (dict(feed_forward_dim=0), "feed_forward_dim"),
+            (dict(num_transformer_blocks=0), "num_transformer_blocks"),
+        ],
+    )
+    def test_rejects_invalid_values(self, kwargs: dict, match: str) -> None:
+        """ModelConfig should raise ValueError on non-positive integer fields, naming the offending field."""
+        with pytest.raises(ValueError, match=match):
+            ModelConfig(**kwargs)
+
 
 class TestTrainingConfig:
     """Test suite for TrainingConfig dataclass"""
@@ -91,6 +121,28 @@ class TestTrainingConfig:
         assert 0.0 <= config.warmup_rate <= 1.0
         assert config.lr_peak_value > config.lr_init_value
         assert config.lr_peak_value > config.lr_end_value
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            (dict(batch_size=0), "batch_size"),
+            (dict(batch_size=-1), "batch_size"),
+            (dict(epochs=0), "epochs"),
+            (dict(max_stories=0), "max_stories"),
+            (dict(warmup_rate=-0.1), "warmup_rate"),
+            (dict(warmup_rate=1.5), "warmup_rate"),
+            (dict(lr_init_value=-1e-4), "lr_init_value"),
+            (dict(lr_init_value=1.0, lr_peak_value=0.1), "lr_init_value"),
+            (dict(lr_end_value=-1e-6), "lr_end_value"),
+            (dict(weight_decay=-0.01), "weight_decay"),
+            (dict(log_every_n_steps=0), "log_every_n_steps"),
+            (dict(num_workers=-1), "num_workers"),
+        ],
+    )
+    def test_rejects_invalid_values(self, kwargs: dict, match: str) -> None:
+        """TrainingConfig should raise ValueError on invalid fields, naming the offending field."""
+        with pytest.raises(ValueError, match=match):
+            TrainingConfig(**kwargs)
 
 
 class TestInferenceConfig:
@@ -110,3 +162,17 @@ class TestInferenceConfig:
         assert config.max_new_tokens == max_new_tokens
         assert config.temperature == temperature
         assert config.seed == seed
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            (dict(max_new_tokens=0), "max_new_tokens"),
+            (dict(max_new_tokens=-1), "max_new_tokens"),
+            (dict(temperature=0.0), "temperature"),
+            (dict(temperature=-0.5), "temperature"),
+        ],
+    )
+    def test_rejects_invalid_values(self, kwargs: dict, match: str) -> None:
+        """InferenceConfig should raise ValueError on invalid fields, naming the offending field."""
+        with pytest.raises(ValueError, match=match):
+            InferenceConfig(**kwargs)

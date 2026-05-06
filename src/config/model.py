@@ -25,6 +25,25 @@ class ModelConfig:
     model_seed: int = 0
 
     def __post_init__(self) -> None:
-        """Validate configuration after initialization."""
-        assert self.embed_dim % self.num_heads == 0, \
-            f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+        """Validate configuration after initialization.
+
+        Uses raise (not assert) so checks survive `python -O`.
+        """
+        if self.maxlen <= 0:
+            raise ValueError(f"maxlen must be > 0, got {self.maxlen}")
+        if self.vocab_size <= 0:
+            raise ValueError(f"vocab_size must be > 0, got {self.vocab_size}")
+        if self.embed_dim <= 0:
+            raise ValueError(f"embed_dim must be > 0, got {self.embed_dim}")
+        if self.num_heads <= 0:
+            raise ValueError(f"num_heads must be > 0, got {self.num_heads}")
+        if self.feed_forward_dim <= 0:
+            raise ValueError(f"feed_forward_dim must be > 0, got {self.feed_forward_dim}")
+        if self.num_transformer_blocks <= 0:
+            raise ValueError(
+                f"num_transformer_blocks must be > 0, got {self.num_transformer_blocks}"
+            )
+        if self.embed_dim % self.num_heads != 0:
+            raise ValueError(
+                f"embed_dim ({self.embed_dim}) must be divisible by num_heads ({self.num_heads})"
+            )
