@@ -45,7 +45,7 @@ def _parse_args() -> argparse.Namespace:
         "--checkpoint",
         type=str,
         default=None,
-        help="Path to save checkpoint (default: checkpoints/nano_checkpoint.orbax)",
+        help="Path to save checkpoint bundle directory (default: checkpoints/NanoLLM_{timestamp}/)",
     )
     parser.add_argument("--data-file", type=str, default=None, help="Path to training data file")
     return parser.parse_args()

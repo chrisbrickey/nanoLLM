@@ -13,7 +13,13 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 import pytest
 
-from src.checkpoint import get_latest_checkpoint, load_checkpoint, save_checkpoint
+from src.checkpoint import (
+    CheckpointMetadata,
+    get_latest_checkpoint,
+    load_checkpoint,
+    load_metadata,
+    save_checkpoint,
+)
 from src.config import ModelConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
@@ -24,6 +30,13 @@ EMBED_DIM = 12
 NUM_HEADS = 3
 FF_DIM = 16
 NUM_BLOCKS = 1
+
+
+def _make_bundle(parent: Path, name: str) -> Path:
+    bundle = parent / name
+    bundle.mkdir()
+    (bundle / "weights.orbax").mkdir()
+    return bundle
 
 
 def _make_model(seed: int = 0) -> NanoLLM:
@@ -41,8 +54,8 @@ def _make_model(seed: int = 0) -> NanoLLM:
 
 @pytest.fixture
 def project_checkpoint_path() -> Generator[Path, None, None]:
-    """Unique checkpoint path inside the project; cleaned up after the test."""
-    path = CHECKPOINTS_DIR / f"unit_test_{uuid.uuid4().hex[:8]}.orbax"
+    """Unique checkpoint bundle path inside the project; cleaned up after the test."""
+    path = CHECKPOINTS_DIR / f"unit_test_{uuid.uuid4().hex[:8]}"
     yield path
     if path.exists():
         shutil.rmtree(path)
@@ -51,7 +64,7 @@ def project_checkpoint_path() -> Generator[Path, None, None]:
 class TestSaveCheckpoint:
     def test_calls_orbax_save_with_correct_args(self, caplog: pytest.LogCaptureFixture) -> None:
         model = _make_model()
-        save_path = CHECKPOINTS_DIR / "mock_test.orbax"
+        save_path = CHECKPOINTS_DIR / "mock_test"
 
         with caplog.at_level(logging.INFO, logger="src.checkpoint"):
             with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
@@ -62,23 +75,91 @@ class TestSaveCheckpoint:
 
                 mock_instance.save.assert_called_once()
                 call = mock_instance.save.call_args
-                assert call.args[0] == save_path.resolve()
+                assert call.args[0] == (save_path / "weights.orbax").resolve()
                 assert call.kwargs["force"] is True
 
         assert "Saving checkpoint" in caplog.text
         assert "Checkpoint saved" in caplog.text
 
+    def test_writes_metadata_json_when_metadata_provided(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        model = _make_model()
+        metadata = CheckpointMetadata(
+            epochs_trained=3,
+            final_loss=1.23,
+            model_config={"embed_dim": 12},
+            training_config={"epochs": 3},
+        )
+        save_checkpoint(model, project_checkpoint_path, metadata=metadata)
+        assert (project_checkpoint_path / "metadata.json").exists()
+
+    def test_does_not_write_metadata_json_when_no_metadata(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        model = _make_model()
+        save_checkpoint(model, project_checkpoint_path)
+        assert not (project_checkpoint_path / "metadata.json").exists()
+
     def test_rejects_path_outside_project(self) -> None:
         model = _make_model()
         with pytest.raises(ValueError, match="outside the project root"):
-            save_checkpoint(model, Path("/tmp/outside.orbax"))
+            save_checkpoint(model, Path("/tmp/outside"))
 
     def test_raises_oserror_when_mkdir_fails(self) -> None:
         model = _make_model()
-        some_valid_path = CHECKPOINTS_DIR / "unit_test_mkdir_fail.orbax"
+        some_valid_path = CHECKPOINTS_DIR / "unit_test_mkdir_fail"
         with patch("pathlib.Path.mkdir", side_effect=OSError("disk full")):
             with pytest.raises(OSError, match="Failed to create checkpoint directory"):
                 save_checkpoint(model, some_valid_path)
+
+
+class TestCheckpointMetadata:
+    def test_load_metadata_round_trip(self, project_checkpoint_path: Path) -> None:
+        model = _make_model()
+        epochs_trained = 5
+        final_loss = 0.87
+        model_config = {"embed_dim": 12, "num_heads": 3}
+        training_config = {"epochs": 5, "batch_size": 4}
+        metadata = CheckpointMetadata(
+            epochs_trained=epochs_trained,
+            final_loss=final_loss,
+            model_config=model_config,
+            training_config=training_config,
+        )
+        save_checkpoint(model, project_checkpoint_path, metadata=metadata)
+
+        loaded = load_metadata(project_checkpoint_path)
+
+        assert loaded is not None
+        assert loaded.epochs_trained == epochs_trained
+        assert loaded.final_loss == pytest.approx(final_loss)
+        assert loaded.model_config == model_config
+        assert loaded.training_config == training_config
+        assert isinstance(loaded.created_at, str)
+        assert len(loaded.created_at) > 0
+
+    def test_load_metadata_returns_none_for_missing_file(self, tmp_path: Path) -> None:
+        bundle_dir = tmp_path / "empty_bundle"
+        bundle_dir.mkdir()
+        # No metadata.json inside
+        result = load_metadata(bundle_dir)
+        assert result is None
+
+    def test_load_metadata_returns_none_for_malformed_json(self, tmp_path: Path) -> None:
+        bundle_dir = tmp_path / "malformed_bundle"
+        bundle_dir.mkdir()
+        (bundle_dir / "metadata.json").write_text("{ this is not valid json }", encoding="utf-8")
+        result = load_metadata(bundle_dir)
+        assert result is None
+
+    def test_load_metadata_returns_none_for_wrong_structure(self, tmp_path: Path) -> None:
+        bundle_dir = tmp_path / "wrong_structure_bundle"
+        bundle_dir.mkdir()
+        # Valid JSON but missing required `epochs_trained` key
+        (bundle_dir / "metadata.json").write_text('{"final_loss": 0.5}', encoding="utf-8")
+        result = load_metadata(bundle_dir)
+        assert result is None
 
 
 class TestGetLatestCheckpoint:
@@ -89,68 +170,70 @@ class TestGetLatestCheckpoint:
     def test_returns_none_when_directory_is_empty(self, tmp_path: Path) -> None:
         assert get_latest_checkpoint(tmp_path) is None
 
-    def test_returns_none_when_no_orbax_files(self, tmp_path: Path) -> None:
+    def test_returns_none_when_no_valid_checkpoints(self, tmp_path: Path) -> None:
+        # A plain file (not a valid checkpoint bundle) should be ignored
         (tmp_path / "some_file.txt").write_text("data")
         assert get_latest_checkpoint(tmp_path) is None
 
     def test_returns_single_file(self, tmp_path: Path) -> None:
-        checkpoint = tmp_path / "model_001.orbax"
-        checkpoint.write_text("checkpoint data")
-        assert get_latest_checkpoint(tmp_path) == checkpoint
+        bundle = _make_bundle(tmp_path, "model_001")
+        assert get_latest_checkpoint(tmp_path) == bundle
 
     def test_returns_most_recently_modified_file(self, tmp_path: Path) -> None:
-        older = tmp_path / "model_old.orbax"
-        newer = tmp_path / "model_new.orbax"
-        older.write_text("old data")
-        newer.write_text("new data")
-        # Set older mtime to the past explicitly
+        older = _make_bundle(tmp_path, "model_old")
+        newer = _make_bundle(tmp_path, "model_new")
         os.utime(older, (1_000_000, 1_000_000))
         os.utime(newer, (2_000_000, 2_000_000))
         assert get_latest_checkpoint(tmp_path) == newer
 
-    def test_ignores_non_orbax_files(self, tmp_path: Path) -> None:
-        orbax_file = tmp_path / "model_001.orbax"
-        text_file = tmp_path / "notes.txt"
-        orbax_file.write_text("checkpoint data")
-        text_file.write_text("some notes")
-        assert get_latest_checkpoint(tmp_path) == orbax_file
+    def test_ignores_directories_without_weights_orbax(self, tmp_path: Path) -> None:
+        valid_bundle = _make_bundle(tmp_path, "model_valid")
+        invalid_bundle = tmp_path / "model_no_weights"
+        invalid_bundle.mkdir()
+        assert get_latest_checkpoint(tmp_path) == valid_bundle
 
     def test_skips_file_with_oserror_on_stat(self, tmp_path: Path) -> None:
-        good_file = tmp_path / "model_good.orbax"
-        bad_file = tmp_path / "model_bad.orbax"
-        good_file.write_text("good checkpoint")
-        bad_file.write_text("bad checkpoint")
+        good_bundle = _make_bundle(tmp_path, "model_good")
+        bad_bundle = _make_bundle(tmp_path, "model_bad")
 
         original_stat = Path.stat
 
         def patched_stat(self: Path, **kwargs: object) -> object:
-            if self == bad_file:
+            if self == bad_bundle:
                 raise OSError("permission denied")
             return original_stat(self, **kwargs)
 
         with patch.object(Path, "stat", patched_stat):
             result = get_latest_checkpoint(tmp_path)
 
-        assert result == good_file
+        assert result == good_bundle
 
 
 class TestLoadCheckpoint:
     def test_rejects_path_outside_project(self) -> None:
         model = _make_model()
         with pytest.raises(ValueError, match="outside the project root"):
-            load_checkpoint(model, Path("/tmp/outside.orbax"))
+            load_checkpoint(model, Path("/tmp/outside"))
 
     def test_rejects_missing_file(self) -> None:
         model = _make_model()
-        missing_path = CHECKPOINTS_DIR / f"does_not_exist_{uuid.uuid4().hex[:8]}.orbax"
+        missing_path = CHECKPOINTS_DIR / f"does_not_exist_{uuid.uuid4().hex[:8]}"
         with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
             load_checkpoint(model, missing_path)
+
+    def test_rejects_bundle_without_weights(self, project_checkpoint_path: Path) -> None:
+        """Bundle dir exists but weights.orbax/ subdir is absent."""
+        project_checkpoint_path.mkdir(parents=True, exist_ok=True)
+        model = _make_model()
+        with pytest.raises(FileNotFoundError, match="No weights found"):
+            load_checkpoint(model, project_checkpoint_path)
 
     def test_wraps_orbax_errors_as_value_error(self, project_checkpoint_path: Path) -> None:
         """Underlying orbax exceptions surface as a single ValueError so callers have one error path."""
         model = _make_model()
-        # Create a directory at the path so existence check passes; orbax will then fail to restore it.
+        # Create the bundle dir AND weights.orbax subdir so existence checks pass
         project_checkpoint_path.mkdir(parents=True, exist_ok=True)
+        (project_checkpoint_path / "weights.orbax").mkdir()
         with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
             mock_instance = MagicMock()
             mock_instance.restore.side_effect = KeyError("missing tree node")

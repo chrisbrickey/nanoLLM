@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from collections.abc import Iterable
 from pathlib import Path
@@ -7,7 +8,7 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 import optax
 
-from src.checkpoint import save_checkpoint
+from src.checkpoint import CheckpointMetadata, save_checkpoint
 from src.config import TrainingConfig
 from src.model.model import NanoLLM
 from src.training.schedule import build_learning_rate_schedule, compute_step_counts
@@ -95,6 +96,13 @@ class Trainer:
                 )
 
         if self.checkpoint_path is not None:
-            save_checkpoint(self.model, self.checkpoint_path)
+            final_loss = metrics_history["train_loss"][-1] if metrics_history["train_loss"] else None
+            metadata = CheckpointMetadata(
+                epochs_trained=self.training_config.epochs,
+                final_loss=final_loss,
+                model_config=dataclasses.asdict(self.model.config),
+                training_config=dataclasses.asdict(self.training_config),
+            )
+            save_checkpoint(self.model, self.checkpoint_path, metadata=metadata)
 
         return metrics_history
