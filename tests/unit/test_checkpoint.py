@@ -114,7 +114,48 @@ class TestSaveCheckpoint:
                 save_checkpoint(model, some_valid_path)
 
 
+SAMPLE_TOKENIZER_CONFIG: dict[str, object] = {
+    "delimiter": "<|endoftext|>",
+    "name": "gpt2",
+    "pad_token_id": 0,
+}
+
+
 class TestCheckpointMetadata:
+    def test_tokenizer_config_round_trips_through_json(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        """CheckpointMetadata persists tokenizer_config and load_metadata returns the same dict."""
+        model = _make_model()
+        metadata = CheckpointMetadata(
+            epochs_trained=1,
+            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
+        )
+        save_checkpoint(model, project_checkpoint_path, metadata=metadata)
+
+        loaded = load_metadata(project_checkpoint_path)
+
+        assert loaded is not None
+        assert loaded.tokenizer_config == SAMPLE_TOKENIZER_CONFIG
+
+    def test_load_metadata_backward_compat_missing_tokenizer_config(
+        self, tmp_path: Path
+    ) -> None:
+        """Old checkpoints that lack tokenizer_config load successfully with tokenizer_config=None."""
+        bundle_dir = tmp_path / "old_checkpoint"
+        bundle_dir.mkdir()
+        # Simulate a checkpoint written before tokenizer_config was added
+        (bundle_dir / "metadata.json").write_text(
+            '{"epochs_trained": 3, "final_loss": 1.5, "model_config": null, '
+            '"training_config": null, "created_at": "2026-01-01T00:00:00"}',
+            encoding="utf-8",
+        )
+
+        result = load_metadata(bundle_dir)
+
+        assert result is not None
+        assert result.tokenizer_config is None
+
     def test_load_metadata_round_trip(self, project_checkpoint_path: Path) -> None:
         model = _make_model()
         epochs_trained = 5

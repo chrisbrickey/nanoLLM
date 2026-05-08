@@ -27,6 +27,7 @@ class CheckpointMetadata:
     model_config: dict[str, Any] | None = None
     training_config: dict[str, Any] | None = None
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    tokenizer_config: dict[str, Any] | None = None
 
 
 def default_checkpoint_path(model_name: str = "NanoLLM") -> Path:
@@ -70,8 +71,15 @@ def load_metadata(path: Path) -> CheckpointMetadata | None:
         return None
     try:
         data = json.loads(metadata_file.read_text(encoding="utf-8"))
-        return CheckpointMetadata(**data)
-    except (json.JSONDecodeError, TypeError):
+        return CheckpointMetadata(
+            epochs_trained=data["epochs_trained"],
+            final_loss=data.get("final_loss"),
+            model_config=data.get("model_config"),
+            training_config=data.get("training_config"),
+            created_at=data.get("created_at", ""),
+            tokenizer_config=data.get("tokenizer_config"),
+        )
+    except (json.JSONDecodeError, TypeError, KeyError):
         return None
 
 

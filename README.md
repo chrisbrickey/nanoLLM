@@ -60,7 +60,7 @@ nanoLLM/
 │
 ├── pyproject.toml       # UV dependencies and package configuration
 │ 
-├── checkpoints/         # saved model weights (gitignored)
+├── checkpoints/         # model weights and training metadata (gitignored)
 ├── data/                # raw data and processed datasets (gitignored)
 │ 
 ├── notebooks/           # interactive notebooks for building out components*

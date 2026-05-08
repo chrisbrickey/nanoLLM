@@ -1,5 +1,7 @@
 """Unit tests for src/training/trainer.py"""
 
+import dataclasses
+import json
 import logging
 import shutil
 import uuid
@@ -11,7 +13,7 @@ import numpy as np
 import flax.nnx as nnx
 import pytest
 
-from src.config import ModelConfig, TrainingConfig
+from src.config import ModelConfig, TrainingConfig, TokenizerConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
 from src.training.trainer import Trainer
@@ -163,3 +165,53 @@ class TestTrainerTrain:
         )
         trainer.train()
         assert project_checkpoint_path.exists()
+
+
+SAMPLE_TOKENIZER_CONFIG = TokenizerConfig(
+    delimiter="<|endoftext|>",
+    name="gpt2",
+    pad_token_id=0,
+)
+
+
+class TestTrainerTokenizerConfig:
+    def test_tokenizer_config_written_to_metadata_json(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        """When Trainer receives tokenizer_config and train() saves a checkpoint,
+        the metadata.json on disk contains a tokenizer_config key matching the config."""
+        trainer = Trainer(
+            model=_make_model(),
+            training_config=_make_config(),
+            dataloader=_make_dataloader(),
+            batches_per_epoch=N_BATCHES,
+            checkpoint_path=project_checkpoint_path,
+            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
+        )
+        trainer.train()
+
+        metadata_file = project_checkpoint_path / "metadata.json"
+        assert metadata_file.exists()
+        saved = json.loads(metadata_file.read_text(encoding="utf-8"))
+        assert saved["tokenizer_config"] == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
+
+    def test_trainer_without_tokenizer_config_does_not_raise(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        """Omitting tokenizer_config is backward-compatible — train() must not raise,
+        and the checkpoint must be written."""
+        trainer = Trainer(
+            model=_make_model(),
+            training_config=_make_config(),
+            dataloader=_make_dataloader(),
+            batches_per_epoch=N_BATCHES,
+            checkpoint_path=project_checkpoint_path,
+        )
+        trainer.train()  # must not raise
+
+        assert project_checkpoint_path.exists()
+        metadata_file = project_checkpoint_path / "metadata.json"
+        assert metadata_file.exists()
+        saved = json.loads(metadata_file.read_text(encoding="utf-8"))
+        # tokenizer_config is either absent or null — either is acceptable
+        assert saved.get("tokenizer_config") is None

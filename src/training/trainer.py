@@ -9,7 +9,7 @@ import flax.nnx as nnx
 import optax
 
 from src.checkpoint import CheckpointMetadata, save_checkpoint
-from src.config import TrainingConfig
+from src.config import TrainingConfig, TokenizerConfig
 from src.model.model import NanoLLM
 from src.training.schedule import build_learning_rate_schedule, compute_step_counts
 from src.training.step import make_train_step
@@ -27,6 +27,7 @@ class Trainer:
         batches_per_epoch: int,
         *,
         checkpoint_path: Path | None = None,
+        tokenizer_config: TokenizerConfig | None = None,
     ) -> None:
 
         if batches_per_epoch <= 0:
@@ -38,6 +39,7 @@ class Trainer:
         self.training_config = training_config
         self.dataloader = dataloader
         self.checkpoint_path = checkpoint_path
+        self.tokenizer_config = tokenizer_config
 
         total_steps, warmup_steps = compute_step_counts(training_config, batches_per_epoch)
         self.schedule = build_learning_rate_schedule(training_config, total_steps, warmup_steps)
@@ -102,6 +104,7 @@ class Trainer:
                 final_loss=final_loss,
                 model_config=dataclasses.asdict(self.model.config),
                 training_config=dataclasses.asdict(self.training_config),
+                tokenizer_config=dataclasses.asdict(self.tokenizer_config) if self.tokenizer_config is not None else None,
             )
             save_checkpoint(self.model, self.checkpoint_path, metadata=metadata)
 
