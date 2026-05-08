@@ -40,7 +40,7 @@ class _FakeDataLoader:
 
 @pytest.fixture
 def project_checkpoint_path() -> Generator[Path, None, None]:
-    path = CHECKPOINTS_DIR / f"integration_test_{uuid.uuid4().hex[:8]}.orbax"
+    path = CHECKPOINTS_DIR / f"integration_test_{uuid.uuid4().hex[:8]}"
     yield path
     if path.exists():
         shutil.rmtree(path)
@@ -95,3 +95,5 @@ class TestTrainLoop:
     def test_checkpoint_written_to_disk(self, project_checkpoint_path: Path) -> None:
         _make_trainer(checkpoint_path=project_checkpoint_path).train()
         assert project_checkpoint_path.exists()
+        assert (project_checkpoint_path / "weights.orbax").exists()
+        assert (project_checkpoint_path / "metadata.json").exists()

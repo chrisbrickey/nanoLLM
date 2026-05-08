@@ -27,6 +27,7 @@ class NanoLLM(nnx.Module):
         """
         rngs = nnx.Rngs(config.model_seed)
         self.maxlen = config.maxlen
+        self.config = config
 
         # create token and position vector embeddings
         self.embedding = TokenAndPositionEmbedding(

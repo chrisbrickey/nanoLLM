@@ -119,7 +119,7 @@ class TestCliArguments:
         with patch("src.checkpoint.datetime") as mock_dt:
             mock_dt.now.return_value = fixed_dt
             kwargs = run_cli()
-        expected = CHECKPOINTS_DIR / "NanoLLM_20260115_103045.orbax"
+        expected = CHECKPOINTS_DIR / "NanoLLM_20260115_103045"
         assert kwargs["checkpoint_path"] == expected
 
 

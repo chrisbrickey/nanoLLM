@@ -3,10 +3,10 @@
 A transformer-based language model capable of text generation and completion. 
 Built with JAX and Flax NNX, this program covers the entire pipelime from embeddings to inference.
 nanoLLM supports saving and loading training checkpoints, which enables model persistence, fine-tuning, and inference with pre-trained weights.
-I developed the code iteratively, trying out implementations in Jupyter notebooks and extracting to modules with test coverage as code stabilized.
 
 
 ## Key Features & Capabilities
+I developed the code iteratively, trying out implementations in Jupyter notebooks and extracting to modules with test coverage as code stabilized.
 
 ### Transformer Architecture
 - **Dual embedding system** (token + position): Maps each of the vocabulary tokens and 128 sequence positions to vectors. Position is required to understand order. 
@@ -21,10 +21,10 @@ I developed the code iteratively, trying out implementations in Jupyter notebook
 ### Training Infrastructure
 - **AdamW optimizer** Uses decoupled weight decay for better generalization than standard Adam.
 - **Learning rate scheduling**: Warmup configuration prevents training instability. Cosine decay enables fine-grained convergence.
-- **Checkpoint management**: Orbax-based model persistence for experiment reproducibility and training resumption.
+- **Checkpoint management**: Orbax-based model persistence for experiment reproducibility and training resumption. Each checkpoint is saved as a bundled directory with tensor data (`weights.orbax/`) and a human-readable json sidecar (`metadata.json`) of training parameters like epoch count, final loss, and model config.
 
 ### Model Persistence & Deployment
-- **Save and load checkpoints**: Export trained model weights to disk and restore them later for continued training, comparison, or inference.
+- **Save and load checkpoints**: Export trained model weights and training metadata to disk as a bundle directory (`weights.orbax/` + `metadata.json`), and restore them later for continued training, comparison, or inference.
 - **Cross-device compatibility**: Load checkpoints trained on different devices (CPU/GPU/multi-device) for local inference or experimentation.
 - **Integrity verification**: Automatic state comparison ensures loaded checkpoints match saved weights (using L2 norm checks).
 
@@ -93,20 +93,20 @@ uv sync
 uv run nanollm-train
 
 # run with some overrides
-uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint {desired_directory}/{unique_filename}.orbax
+uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint {desired_checkpoint_directory}/{training_run_name}/
 ```
 
 #### Optional Flags
 
-| Flag | Description | Default                                 |
-|------|-------------|-----------------------------------------|
-| `--batch-size` | Number of samples per training batch | `32`                                    |
-| `--epochs` | Number of full passes through the training data | `3`                                     |
-| `--max-stories` | Maximum number of stories to load from the data file | `100`                                   |
-| `--seed` | Random seed for reproducibility | `42`                                    |
-| `--shuffle` / `--no-shuffle` | Enable or disable dataset shuffling | `False`                                 |
-| `--data-file` | Path to the training data file | `data/TinyStories-1000.txt`             |
-| `--checkpoint` | Path to save the training checkpoint | `checkpoints/NanoLLM_{timestamp}.orbax` |
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--batch-size` | Number of samples per training batch | `32` |
+| `--epochs` | Number of full passes through the training data | `3` |
+| `--max-stories` | Maximum number of stories to load from the data file | `100` |
+| `--seed` | Random seed for reproducibility | `42` |
+| `--shuffle` / `--no-shuffle` | Enable or disable dataset shuffling | `False` |
+| `--data-file` | Path to the training data file | `data/TinyStories-1000.txt` |
+| `--checkpoint` | Path to save the checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
 
 
 
