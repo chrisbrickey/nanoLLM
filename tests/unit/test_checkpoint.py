@@ -1,5 +1,6 @@
 """Unit tests for src/checkpoint.py"""
 
+import dataclasses
 import logging
 import os
 import shutil
@@ -15,12 +16,13 @@ import pytest
 
 from src.checkpoint import (
     CheckpointMetadata,
+    apply_checkpoint,
+    build_model_from_checkpoint,
     get_latest_checkpoint,
-    load_checkpoint,
     load_metadata,
     save_checkpoint,
 )
-from src.config import ModelConfig
+from src.config import ModelConfig, TokenizerConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
 
@@ -118,6 +120,16 @@ SAMPLE_TOKENIZER_CONFIG: dict[str, object] = {
     "delimiter": "<|endoftext|>",
     "name": "gpt2",
     "pad_token_id": 0,
+}
+
+SAMPLE_MODEL_CONFIG_DICT: dict[str, object] = {
+    "maxlen": MAXLEN,
+    "vocab_size": VOCAB_SIZE,
+    "embed_dim": EMBED_DIM,
+    "num_heads": NUM_HEADS,
+    "feed_forward_dim": FF_DIM,
+    "num_transformer_blocks": NUM_BLOCKS,
+    "model_seed": 0,
 }
 
 
@@ -250,24 +262,24 @@ class TestGetLatestCheckpoint:
         assert result == good_bundle
 
 
-class TestLoadCheckpoint:
+class TestApplyCheckpoint:
     def test_rejects_path_outside_project(self) -> None:
         model = _make_model()
         with pytest.raises(ValueError, match="outside the project root"):
-            load_checkpoint(model, Path("/tmp/outside"))
+            apply_checkpoint(model, Path("/tmp/outside"))
 
     def test_rejects_missing_file(self) -> None:
         model = _make_model()
         missing_path = CHECKPOINTS_DIR / f"does_not_exist_{uuid.uuid4().hex[:8]}"
         with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
-            load_checkpoint(model, missing_path)
+            apply_checkpoint(model, missing_path)
 
     def test_rejects_bundle_without_weights(self, project_checkpoint_path: Path) -> None:
         """Bundle dir exists but weights.orbax/ subdir is absent."""
         project_checkpoint_path.mkdir(parents=True, exist_ok=True)
         model = _make_model()
         with pytest.raises(FileNotFoundError, match="No weights found"):
-            load_checkpoint(model, project_checkpoint_path)
+            apply_checkpoint(model, project_checkpoint_path)
 
     def test_wraps_orbax_errors_as_value_error(self, project_checkpoint_path: Path) -> None:
         """Underlying orbax exceptions surface as a single ValueError so callers have one error path."""
@@ -280,7 +292,7 @@ class TestLoadCheckpoint:
             mock_instance.restore.side_effect = KeyError("missing tree node")
             MockCheckpointer.return_value = mock_instance
             with pytest.raises(ValueError, match="Failed to load checkpoint"):
-                load_checkpoint(model, project_checkpoint_path)
+                apply_checkpoint(model, project_checkpoint_path)
 
 
 class TestSaveLoadRoundTrip:
@@ -294,7 +306,7 @@ class TestSaveLoadRoundTrip:
 
             # Initialize with a different seed so params start different
             restored_model = _make_model(seed=99)
-            load_checkpoint(restored_model, project_checkpoint_path)
+            apply_checkpoint(restored_model, project_checkpoint_path)
 
         orig_leaves = jax.tree_util.tree_leaves(nnx.state(original))
         rest_leaves = jax.tree_util.tree_leaves(nnx.state(restored_model))
@@ -303,3 +315,55 @@ class TestSaveLoadRoundTrip:
         assert "Checkpoint saved" in caplog.text
         assert "Loading checkpoint" in caplog.text
         assert "Checkpoint loaded" in caplog.text
+
+
+class TestBuildModelFromCheckpoint:
+    def test_returns_model_with_correct_configs(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        model_config = ModelConfig(**SAMPLE_MODEL_CONFIG_DICT)
+        tokenizer_config = TokenizerConfig(**SAMPLE_TOKENIZER_CONFIG)
+        original = NanoLLM(model_config)
+        metadata = CheckpointMetadata(
+            epochs_trained=1,
+            model_config=dataclasses.asdict(model_config),
+            tokenizer_config=dataclasses.asdict(tokenizer_config),
+        )
+        save_checkpoint(original, project_checkpoint_path, metadata=metadata)
+
+        loaded_model, loaded_mc, loaded_tc = build_model_from_checkpoint(project_checkpoint_path)
+
+        assert loaded_mc == model_config
+        assert loaded_tc == tokenizer_config
+        orig_leaves = jax.tree_util.tree_leaves(nnx.state(original))
+        loaded_leaves = jax.tree_util.tree_leaves(nnx.state(loaded_model))
+        assert all(jnp.allclose(a, b) for a, b in zip(orig_leaves, loaded_leaves))
+
+    def test_raises_when_no_metadata(self, project_checkpoint_path: Path) -> None:
+        save_checkpoint(_make_model(), project_checkpoint_path)
+        with pytest.raises(ValueError, match="no metadata"):
+            build_model_from_checkpoint(project_checkpoint_path)
+
+    def test_raises_when_model_config_missing(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        metadata = CheckpointMetadata(
+            epochs_trained=1, tokenizer_config=SAMPLE_TOKENIZER_CONFIG
+        )
+        save_checkpoint(_make_model(), project_checkpoint_path, metadata=metadata)
+        with pytest.raises(ValueError, match="model_config"):
+            build_model_from_checkpoint(project_checkpoint_path)
+
+    def test_raises_when_tokenizer_config_missing(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        metadata = CheckpointMetadata(
+            epochs_trained=1, model_config=SAMPLE_MODEL_CONFIG_DICT
+        )
+        save_checkpoint(_make_model(), project_checkpoint_path, metadata=metadata)
+        with pytest.raises(ValueError, match="tokenizer_config"):
+            build_model_from_checkpoint(project_checkpoint_path)
+
+    def test_rejects_path_outside_project(self) -> None:
+        with pytest.raises(ValueError, match="outside the project root"):
+            build_model_from_checkpoint(Path("/tmp/outside"))
