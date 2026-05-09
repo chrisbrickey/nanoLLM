@@ -80,6 +80,23 @@ def get_latest_checkpoint(directory: Path = CHECKPOINTS_DIR) -> Path | None:
             continue
     return max(candidates, key=lambda t: t[0])[1] if candidates else None
 
+def get_latest_checkpoints(directory: Path = CHECKPOINTS_DIR, n: int = 2) -> list[Path]:
+    """Return up to N most recent checkpoint bundles, ordered newest-first by mtime."""
+    if not directory.exists():
+        return []
+
+    candidates: list[tuple[float, Path]] = []
+    for p in directory.iterdir():
+        try:
+            if not (p.is_dir() and (p / "weights.orbax").exists()):
+                continue
+            candidates.append((p.stat().st_mtime, p))
+        except OSError:
+            continue
+
+    candidates.sort(key=lambda t: t[0], reverse=True)
+    return [p for _, p in candidates[:n]]
+
 def load_metadata(path: Path) -> CheckpointMetadata | None:
     """Read metadata.json from a checkpoint bundle.
     This remains a public method for callers who want to inspect the metadata.
@@ -102,7 +119,6 @@ def load_metadata(path: Path) -> CheckpointMetadata | None:
         )
     except (json.JSONDecodeError, TypeError, KeyError):
         return None
-
 
 def apply_checkpoint(model: nnx.Module, path: Path) -> nnx.Module:
     """Restore weights to an existing model (restores model state) from an orbax checkpoint bundle.
@@ -143,7 +159,6 @@ _MANUAL_LOAD_HINT = (
     "To load a checkpoint without complete metadata, use the manual approach: "
     "create ModelConfig() and NanoLLM(model_config), call apply_checkpoint(model, path)."
 )
-
 
 def build_model_from_checkpoint(
     path: Path,

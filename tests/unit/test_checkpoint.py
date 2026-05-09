@@ -19,6 +19,7 @@ from src.checkpoint import (
     apply_checkpoint,
     build_model_from_checkpoint,
     get_latest_checkpoint,
+    get_latest_checkpoints,
     load_metadata,
     save_checkpoint,
 )
@@ -367,3 +368,37 @@ class TestBuildModelFromCheckpoint:
     def test_rejects_path_outside_project(self) -> None:
         with pytest.raises(ValueError, match="outside the project root"):
             build_model_from_checkpoint(Path("/tmp/outside"))
+
+
+class TestGetLatestCheckpoints:
+    def test_empty_directory_returns_empty_list(self, tmp_path: Path) -> None:
+        result = get_latest_checkpoints(tmp_path, n=2)
+        assert result == []
+
+    def test_single_bundle_returns_list_of_length_one(self, tmp_path: Path) -> None:
+        bundle = _make_bundle(tmp_path, "checkpoint_001")
+        result = get_latest_checkpoints(tmp_path, n=2)
+        assert result == [bundle]
+
+    def test_three_bundles_with_n2_returns_two_newest_first(self, tmp_path: Path) -> None:
+        oldest = _make_bundle(tmp_path, "checkpoint_old")
+        middle = _make_bundle(tmp_path, "checkpoint_mid")
+        newest = _make_bundle(tmp_path, "checkpoint_new")
+        os.utime(oldest, (1_000_000, 1_000_000))
+        os.utime(middle, (2_000_000, 2_000_000))
+        os.utime(newest, (3_000_000, 3_000_000))
+
+        result = get_latest_checkpoints(tmp_path, n=2)
+
+        assert result == [newest, middle]
+
+    def test_n_larger_than_count_returns_all_available(self, tmp_path: Path) -> None:
+        bundle_a = _make_bundle(tmp_path, "checkpoint_a")
+        bundle_b = _make_bundle(tmp_path, "checkpoint_b")
+        os.utime(bundle_a, (1_000_000, 1_000_000))
+        os.utime(bundle_b, (2_000_000, 2_000_000))
+
+        result = get_latest_checkpoints(tmp_path, n=10)
+
+        assert len(result) == 2
+        assert set(result) == {bundle_a, bundle_b}
