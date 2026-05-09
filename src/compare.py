@@ -12,6 +12,17 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 
 DEFAULT_CHANGE_THRESHOLD: float = 1e-8
+MIN_REPORT_WIDTH: int = 40  # narrower than this breaks the closing-line dash prefix
+
+NORMS_COMPARISON_INTRO: str = (
+    " ANALYSIS 1 — NORMS (magnitude of weights)\n"
+    " A shortcut comparison that measures the overall magnitude of each layer's weights, regardless of quality or direction.\n"
+)
+
+STATE_COMPARISON_INTRO: str = (
+    " ANALYSIS 2 — STATE (actual value of all weights)\n"
+    " Measures actual weight values and reports which fraction changed and by how much.\n"
+)
 
 
 @dataclass(frozen=True)
@@ -155,10 +166,18 @@ def compare_states(
     )
 
 
-def format_norms_comparison(report: NormsComparison) -> str:
+def format_norms_comparison(report: NormsComparison, width: int) -> str:
     """Return a multi-line human-readable string for a NormsComparison result."""
+    if width < MIN_REPORT_WIDTH:
+        raise ValueError(f"width must be at least {MIN_REPORT_WIDTH}, got {width}")
+
+    div: str = "-" * width
+    heavy_div: str = "=" * width
+    closing: str = "end of norm analysis"
+    closing_size: int = len(closing)
     total_layers = report.compared_layers + report.skipped_layers
 
+    # construct summary
     percentage = abs(report.median_ratio - 1.0) * 100
     if percentage < 1.0:
         summary = f"The models are very similar. Median weight size differs by only {percentage:.2f}%."
@@ -169,52 +188,80 @@ def format_norms_comparison(report: NormsComparison) -> str:
         summary = f"The models are noticeably different. Median weight size has {direction} by {percentage:.1f}%."
 
     lines = [
-        "Weight magnitude (aka norm) comparison:",
+        heavy_div,
+        " ANALYSIS 1: WEIGHT MAGNITUDE (NORMS)",
+        heavy_div,
         "",
-        "  Remember this is a comparison of magnitude (not quality) and untrained models are designed to initialize with magnitudes similar to trained models.",
+        f" RESULT SUMMARY: {summary}",
         "",
-        "----------",
+        div,
+        " CONTEXT",
+        "",
+        "  This analysis is a shortcut comparison, measuring the overall magnitude of each layer's weights.",
+        "  It does not indicate difference in quality or direction (positive/negative) of the weights.",
+        "",
+        "  A ratio near 1.0 means similar scale, not similar weights.",
+        "         1.0 = same scale  |  2.0 = after is twice as large  |  0.5 = half the size",
+        "",
+        "  Each layer contains hundreds or thousands of individual weights.",
+        "  The norm of a layer collapses all of those weights into a single number that represents the overall size (magnitude) of the weights.",
+        "  So comparing the norms of the layers of two checkpoints necessarily ignores a level of detail.",
+        "  See Analysis of State for a more definitive measure of difference between checkpoints.",
+        "",
+        "   NB: Well-constructed models are designed to initialize weights at the same scale as a trained model.",
+        "       So even an untrained model might exhibit a very small norm diff compared to a trained model.",
+        "",
+        div,
+        " RATIOS",
         "",
         f"  Median ratio:  {report.median_ratio:.4f}",
-        "    This is the most representative ratio across all layers (robust to outliers).",
+        "    Most representative ratio across all layers (robust to outliers).",
         "    Range: 0.0 to infinity",
         "      ~1.0   = weights are similar in scale",
         "      << 1.0 = weights shrank substantially overall",
         "      >> 1.0 = weights grew substantially overall",
         "",
         f"  Min ratio:     {report.min_ratio:.4f}",
-        "    This is the ratio for the layer that shrank the most (or grew the least).",
+        "    Ratio for the layer that shrank the most (or grew the least).",
         "    Range: 0.0 to infinity",
         "      ~0.0  = at least one layer nearly collapsed to zero (possible dead layer)",
         "      ~1.0  = even the most-shrunken layer barely changed in scale",
         "      > 1.0 = every layer grew; none shrank",
         "",
         f"  Max ratio:     {report.max_ratio:.4f}",
-        "    This is the ratio for the layer that grew the most (or shrank the least).",
+        "    Ratio for the layer that grew the most (or shrank the least).",
         "    Range: 0.0 to infinity",
         "      < 1.0  = every layer shrank; none grew",
         "      ~1.0   = even the most-grown layer barely changed in scale",
         "      >> 1.0 = at least one layer's weights grew dramatically",
         "",
-        "----------",
+        div,
+        " LAYER COUNTS",
         "",
         f"  {report.skipped_layers} layers (of {total_layers} total layers) were skipped due to presence of zero in the denominator.",
         f"  Total layers:   {total_layers}",
         f"  Compared:       {report.compared_layers}",
         f"  Skipped:        {report.skipped_layers}",
         "",
-        "----------",
         "",
-        f"SUMMARY: {summary}",
-        "         NB: Models that have similar norms does not mean that they have identical weights. The states of the model before and after should be analyzed to examine parameters more closely.",
+        f"{'-' * (width - closing_size)}{closing}",
+        "",
     ]
     return "\n".join(lines)
 
 
-def format_state_comparison(report: StateComparison) -> str:
+def format_state_comparison(report: StateComparison, width: int) -> str:
     """Return a multi-line human-readable string for a StateComparison result."""
+    if width < MIN_REPORT_WIDTH:
+        raise ValueError(f"width must be at least {MIN_REPORT_WIDTH}, got {width}")
+
+    div: str = "-" * width
+    heavy_div: str = "=" * width
+    closing: str = "end of state analysis"
+    closing_size: int = len(closing)
     unchanged_params = report.total_params - report.changed_params
 
+    # construct summary
     if report.percent_changed < 1.0:
         summary = f"Almost no weights changed ({report.percent_changed:.2f}%). The two model states are nearly identical."
     elif report.percent_changed < 50.0:
@@ -225,15 +272,26 @@ def format_state_comparison(report: StateComparison) -> str:
         summary = f"{report.percent_changed:.1f}% of weights changed, with a median shift of {report.median_change:.6f}. The models are substantially different."
 
     lines = [
-        "Model parameter comparison:",
+        heavy_div,
+        " ANALYSIS 2: WEIGHT VALUES (STATE COMPARISON)",
+        heavy_div,
         "",
-        "  Remember this compares actual weight values, not just magnitudes.",
-        "  Values near zero indicate the model is unchanged in that respect.",
+        f" RESULT SUMMARY: {summary}",
         "",
-        "----------",
+        div,
+        " CONTEXT",
+        "",
+        "  This analysis compares the actual weight values (potentially millions of values).",
+        "  It reports the fraction of weights that changed and by how much.",
+        "",
+        "  Values near zero in this analysis indicate the model is unchanged.",
+        "  Unlike norms analysis, a high percentage of change in state analysis is expected when comparing a trained checkpoint against an untrained model.",
+        "",
+        div,
+        " CHANGE RATE",
         "",
         f"  Percentage changed: {report.percent_changed:.2f}%",
-        f"    Fraction of individual weight values that shifted by more than {report.change_threshold:g}.",
+        f"    Fraction of individual weights that shifted by more than {report.change_threshold:g}.",
         "    Range: 0% to 100%",
         "      ~0%   = models are nearly identical (weights barely changed)",
         "      ~50%  = roughly half of all weights were updated",
@@ -243,10 +301,11 @@ def format_state_comparison(report: StateComparison) -> str:
         f"  Changed:            {report.changed_params:,}",
         f"  Unchanged:          {unchanged_params:,}",
         "",
-        "----------",
+        div,
+        " CHANGE MAGNITUDES",
         "",
         f"  Median absolute change: {report.median_change:.6f}",
-        "    The most representative per-weight change (robust to outliers).",
+        "    Most representative per-weight change (robust to outliers).",
         "    Range: 0.0 to infinity",
         "      ~0.0  = the typical weight barely moved",
         "      small = fine-grained updates; weights shifted only slightly on average",
@@ -268,13 +327,12 @@ def format_state_comparison(report: StateComparison) -> str:
         f"  Min absolute change:    {report.min_change:.6f}",
         "    The smallest weight shift (includes unchanged weights at ~0.0).",
         "    Range: 0.0 to infinity",
-        "      ~0.0  = at least one weight is essentially unchanged (expected if any params frozen)",
+        "      ~0.0  = at least one weight is essentially unchanged",
         "      > 0.0 = every single weight shifted by at least this amount",
         "",
-        "----------",
         "",
-        f"SUMMARY: {summary}",
-        "         NB: A high percentage of changed weights is expected when loading a trained checkpoint into an untrained model.",
+        f"{'-' * (width - closing_size)}{closing}",
+        "",
     ]
     return "\n".join(lines)
 

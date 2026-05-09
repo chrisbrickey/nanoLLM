@@ -9,6 +9,7 @@ import pytest
 
 from src.compare import (
     DEFAULT_CHANGE_THRESHOLD,
+    MIN_REPORT_WIDTH,
     NormsComparison,
     StateComparison,
     compare_norms,
@@ -204,7 +205,7 @@ class TestFormatters:
             compared_layers=4,
             skipped_layers=1,
         )
-        output = format_norms_comparison(report)
+        output = format_norms_comparison(report, width=80)
 
         assert "1.5" in output or "1.50" in output
         assert "0.8" in output or "0.80" in output
@@ -221,7 +222,7 @@ class TestFormatters:
             min_change=0.0,
             change_threshold=1e-8,
         )
-        output = format_state_comparison(report)
+        output = format_state_comparison(report, width=80)
 
         assert "100" in output
         assert "42" in output
@@ -235,9 +236,60 @@ class TestFormatters:
             skipped_layers=3,
         )
         # Must not raise ZeroDivisionError and must not produce "nan" in output
-        output = format_norms_comparison(report)
+        output = format_norms_comparison(report, width=80)
 
         assert "nan" not in output.lower()
+
+    def test_format_norms_comparison_raises_on_width_below_minimum(self) -> None:
+        report = NormsComparison(
+            median_ratio=1.0, min_ratio=1.0, max_ratio=1.0,
+            compared_layers=1, skipped_layers=0,
+        )
+        with pytest.raises(ValueError):
+            format_norms_comparison(report, width=MIN_REPORT_WIDTH - 1)
+
+    def test_format_norms_comparison_raises_on_negative_width(self) -> None:
+        report = NormsComparison(
+            median_ratio=1.0, min_ratio=1.0, max_ratio=1.0,
+            compared_layers=1, skipped_layers=0,
+        )
+        with pytest.raises(ValueError):
+            format_norms_comparison(report, width=-1)
+
+    def test_format_norms_comparison_accepts_minimum_width(self) -> None:
+        report = NormsComparison(
+            median_ratio=1.0, min_ratio=1.0, max_ratio=1.0,
+            compared_layers=1, skipped_layers=0,
+        )
+        output = format_norms_comparison(report, width=MIN_REPORT_WIDTH)
+        assert len(output) > 0
+
+    def test_format_state_comparison_raises_on_width_below_minimum(self) -> None:
+        report = StateComparison(
+            total_params=10, changed_params=0, percent_changed=0.0,
+            median_change=0.0, mean_change=0.0, max_change=0.0,
+            min_change=0.0, change_threshold=1e-8,
+        )
+        with pytest.raises(ValueError):
+            format_state_comparison(report, width=MIN_REPORT_WIDTH - 1)
+
+    def test_format_state_comparison_raises_on_negative_width(self) -> None:
+        report = StateComparison(
+            total_params=10, changed_params=0, percent_changed=0.0,
+            median_change=0.0, mean_change=0.0, max_change=0.0,
+            min_change=0.0, change_threshold=1e-8,
+        )
+        with pytest.raises(ValueError):
+            format_state_comparison(report, width=-1)
+
+    def test_format_state_comparison_accepts_minimum_width(self) -> None:
+        report = StateComparison(
+            total_params=10, changed_params=0, percent_changed=0.0,
+            median_change=0.0, mean_change=0.0, max_change=0.0,
+            min_change=0.0, change_threshold=1e-8,
+        )
+        output = format_state_comparison(report, width=MIN_REPORT_WIDTH)
+        assert len(output) > 0
 
     def test_format_state_comparison_mentions_threshold(self) -> None:
         threshold = 1e-6
@@ -251,7 +303,7 @@ class TestFormatters:
             min_change=0.0,
             change_threshold=threshold,
         )
-        output = format_state_comparison(report)
+        output = format_state_comparison(report, width=80)
 
         # The threshold value should appear in the output in some form
         assert "1e-06" in output or "1e-6" in output or "0.000001" in output

@@ -1,9 +1,8 @@
 # nanoLLM
 
 A transformer-based language model capable of text generation and completion. 
-Built with JAX and Flax NNX, this program covers the entire pipelime from embeddings to inference.
+Built with JAX and Flax NNX, this program covers the entire pipelime from embedding to inference.
 nanoLLM supports saving and loading training checkpoints, which enables model persistence, fine-tuning, and inference with pre-trained weights.
-
 
 ## Key Features & Capabilities
 I developed the code iteratively, trying out implementations in Jupyter notebooks and extracting to modules with test coverage as code stabilized.
@@ -21,12 +20,12 @@ I developed the code iteratively, trying out implementations in Jupyter notebook
 ### Training Infrastructure
 - **AdamW optimizer** Uses decoupled weight decay for better generalization than standard Adam.
 - **Learning rate scheduling**: Warmup configuration prevents training instability. Cosine decay enables fine-grained convergence.
-- **Checkpoint management**: Orbax-based model persistence for experiment reproducibility and training resumption. Each checkpoint is saved as a bundled directory with tensor data (`weights.orbax/`) and a human-readable json sidecar (`metadata.json`) of training parameters like epoch count, final loss, and model config.
+- **Checkpoint management**: Orbax-based model persistence for experiment reproducibility and training resumption. Each checkpoint is saved as a bundled directory with both tensor weights and a human-readable json sidecar of training metadata.
 
 ### Model Persistence & Deployment
-- **Save and load checkpoints**: Export trained model weights and training metadata to disk as a bundle directory (`weights.orbax/` + `metadata.json`), and restore them later for continued training, comparison, or inference.
+- **Save and load checkpoints**: Export trained model weights and training metadata to disk as a bundle directory and restore them later for continued training, comparison, or inference.
 - **Cross-device compatibility**: Load checkpoints trained on different devices (CPU/GPU/multi-device) for local inference or experimentation.
-- **Integrity verification**: Automatic state comparison ensures loaded checkpoints match saved weights (using L2 norm checks).
+- **Integrity verification**: Automatic state comparison ensures loaded checkpoints match saved weights. CLI script enables diff analysis of any two checkpoint bundles with L2-norm ratios and per-parameter change statistics.
 
 ### Text Generation Inference Engine
 - **Token-by-token generation**: Iteratively generates one token at a time, feeding each prediction back as input for the next step.
@@ -64,7 +63,7 @@ nanoLLM/
 ├── data/                # raw data and processed datasets (gitignored)
 │ 
 ├── notebooks/           # interactive notebooks for building out components*
-├── scripts/             # CLI entrypoints for training, inference, etc. 
+├── scripts/             # CLI entrypoints for training, inference, etc.
 │ 
 ├── src/   
 │    ├── config/              
@@ -109,7 +108,6 @@ uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint {desired_checkpoint
 | `--checkpoint` | Path to save the checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
 
 
-
 ### 3. [Optional] Launch jupyter notebooks
 
 ```
@@ -122,13 +120,35 @@ uv run jupyter lab
 This will open Jupyter in your default browser at `http://localhost:8888`.
 
 
-## Troubleshooting
+## Debugging Tools
 
 ### Test Suite
 
 ```
 uv run pytest
 ```
+
+### Checkpoint Diffs
+CLI tool enables detailed comparison of any two training checkpoints to understand parameter changes. 
+By default, the tool uses a utility that automatically selects the two most recent checkpoints. 
+You may pass arguments `--before` and `--after` to compare any two checkpoints.
+
+```
+# compare the two most recent checkpoints automatically
+uv run nanollm-compare
+
+# compare specific bundles
+uv run nanollm-compare --before checkpoints/run_A/ --after checkpoints/run_B/
+```
+
+#### Optional Flags
+
+| Flag | Description | Default                |
+|------|-------------|------------------------|
+| `--before` | Path to the "before" checkpoint bundle | penultimate checkpoint |
+| `--after` | Path to the "after" checkpoint bundle | most recent checkpoint |
+| `--threshold` | Minimum absolute difference to count a parameter as changed | `1e-8`                 |
+
 
 ### Environment / PATH issues
 

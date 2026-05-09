@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 nanollm-train = "scripts.train:main"
+nanollm-compare = "scripts.compare_checkpoints:main"
 
 [tool.pytest.ini_options]
 filterwarnings = [
