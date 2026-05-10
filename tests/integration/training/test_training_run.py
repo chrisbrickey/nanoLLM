@@ -1,5 +1,7 @@
 """Integration tests for a full training run (src/training/)."""
 
+import dataclasses
+import json
 import shutil
 import uuid
 from collections.abc import Generator, Iterator
@@ -8,10 +10,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.config import ModelConfig, TrainingConfig
+from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
 from src.training.trainer import Trainer
+
+SAMPLE_TOKENIZER_CONFIG = TokenizerConfig(
+    delimiter="<|endoftext|>",
+    name="gpt2",
+    pad_token_id=0,
+)
 
 # Small enough to run fast; large enough that loss reliably trends down.
 MAXLEN = 8
@@ -46,7 +54,11 @@ def project_checkpoint_path() -> Generator[Path, None, None]:
         shutil.rmtree(path)
 
 
-def _make_trainer(checkpoint_path: Path | None = None) -> Trainer:
+def _make_trainer(
+    checkpoint_path: Path | None = None,
+    *,
+    tokenizer_config: TokenizerConfig | None = None,
+) -> Trainer:
     model_config = ModelConfig(
         maxlen=MAXLEN,
         vocab_size=VOCAB_SIZE,
@@ -70,6 +82,7 @@ def _make_trainer(checkpoint_path: Path | None = None) -> Trainer:
         dataloader=dataloader,
         batches_per_epoch=N_BATCHES,
         checkpoint_path=checkpoint_path,
+        tokenizer_config=tokenizer_config,
     )
 
 
@@ -97,3 +110,32 @@ class TestTrainLoop:
         assert project_checkpoint_path.exists()
         assert (project_checkpoint_path / "weights.orbax").exists()
         assert (project_checkpoint_path / "metadata.json").exists()
+
+
+class TestTrainerTokenizerConfigOnDisk:
+    """End-to-end verification that the metadata.json on disk contains the
+    tokenizer_config supplied to the Trainer (or null when omitted). The
+    in-memory wiring is unit-tested in tests/unit/training/test_trainer.py."""
+
+    def test_tokenizer_config_written_to_metadata_json(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        _make_trainer(
+            checkpoint_path=project_checkpoint_path,
+            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
+        ).train()
+
+        metadata_file = project_checkpoint_path / "metadata.json"
+        assert metadata_file.exists()
+        saved = json.loads(metadata_file.read_text(encoding="utf-8"))
+        assert saved["tokenizer_config"] == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
+
+    def test_omitting_tokenizer_config_writes_null(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        _make_trainer(checkpoint_path=project_checkpoint_path).train()
+
+        metadata_file = project_checkpoint_path / "metadata.json"
+        assert metadata_file.exists()
+        saved = json.loads(metadata_file.read_text(encoding="utf-8"))
+        assert saved.get("tokenizer_config") is None

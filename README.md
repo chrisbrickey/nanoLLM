@@ -126,6 +126,9 @@ This will open Jupyter in your default browser at `http://localhost:8888`.
 
 ```
 uv run pytest
+
+# unit tests only for quick sanity check
+uv run pytest tests/unit/
 ```
 
 ### Checkpoint Diffs
