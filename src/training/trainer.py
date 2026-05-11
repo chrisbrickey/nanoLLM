@@ -22,12 +22,13 @@ class Trainer:
     def __init__(
         self,
         model: NanoLLM,
-        training_config: TrainingConfig,
         dataloader: Iterable,
         batches_per_epoch: int,
+        training_config: TrainingConfig,
+        previous_epochs_completed: int,
         *,
-        checkpoint_path: Path | None = None,
-        tokenizer_config: TokenizerConfig | None = None,
+        checkpoint_path: Path | None = None,                # falls back to default within method
+        tokenizer_config: TokenizerConfig | None = None,    # falls back to default within method
     ) -> None:
 
         if batches_per_epoch <= 0:
@@ -40,6 +41,7 @@ class Trainer:
         self.dataloader = dataloader
         self.checkpoint_path = checkpoint_path
         self.tokenizer_config = tokenizer_config
+        self.previous_epochs_completed = previous_epochs_completed
 
         total_steps, warmup_steps = compute_step_counts(training_config, batches_per_epoch)
         self.schedule = build_learning_rate_schedule(training_config, total_steps, warmup_steps)
@@ -63,8 +65,12 @@ class Trainer:
             lambda tokens: jnp.concatenate((tokens[1:], jnp.array([0])))
         )
 
-        for epoch in range(self.training_config.epochs):
-            step = 0
+        # value of 'epoch' is only used for logging within the training loop so it is 1-indexed
+        previous_epochs_completed, current_epochs = self.previous_epochs_completed, self.training_config.epochs
+        for epoch in range(1, current_epochs + 1):
+            logger.info(f"Epoch {epoch} commenced.")
+
+            step = 0 # step is zero-indexed
             epoch_losses: list[float] = []
             for batch in self.dataloader:
                 input_batch = jnp.array(jnp.array(batch).T).astype(jnp.int32)
@@ -83,29 +89,34 @@ class Trainer:
                     loss_val = metrics_history["train_loss"][-1]
                     epoch_losses.append(loss_val)
                     logger.info(
-                        "epoch %d/%d  step %d  loss=%.4f  lr=%.2e",
-                        epoch + 1, self.training_config.epochs, step + 1,
-                        loss_val, float(current_learning_rate),
+                        "Epoch %d/%d: Loss=%.4f, LearningRate=%.2e",
+                        epoch, current_epochs, loss_val, float(current_learning_rate),
                     )
 
                 step += 1
 
+            logger.info(f"Epoch {epoch}/{current_epochs} completed.")
             if epoch_losses:
                 logger.info(
-                    "Epoch %d/%d complete — avg loss: %.4f",
-                    epoch + 1, self.training_config.epochs,
+                    "Average Loss Overall: %.4f",
                     sum(epoch_losses) / len(epoch_losses),
                 )
 
-        if self.checkpoint_path is not None:
+        logger.info(
+            f"All {current_epochs} epochs completed. This is in addition to {previous_epochs_completed} epochs accumulated during previous trainings."
+        )
+
+        if self.checkpoint_path:
             final_loss = metrics_history["train_loss"][-1] if metrics_history["train_loss"] else None
             metadata = CheckpointMetadata(
-                epochs_trained=self.training_config.epochs,
+                cumulative_epochs_completed=(previous_epochs_completed + current_epochs),
                 final_loss=final_loss,
                 model_config=dataclasses.asdict(self.model.config),
                 training_config=dataclasses.asdict(self.training_config),
                 tokenizer_config=dataclasses.asdict(self.tokenizer_config) if self.tokenizer_config is not None else None,
             )
             save_checkpoint(self.model, self.checkpoint_path, metadata=metadata)
+        else:
+            logger.info("Checkpoint path undefined. No checkpoint persisted.")
 
         return metrics_history

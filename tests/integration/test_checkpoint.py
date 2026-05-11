@@ -82,7 +82,7 @@ class TestBuildModelFromCheckpoint:
         tokenizer_config = TokenizerConfig(**SAMPLE_TOKENIZER_CONFIG)
         original = NanoLLM(model_config)
         metadata = CheckpointMetadata(
-            epochs_trained=1,
+            cumulative_epochs_completed=1,
             model_config=dataclasses.asdict(model_config),
             tokenizer_config=dataclasses.asdict(tokenizer_config),
         )

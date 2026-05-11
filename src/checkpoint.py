@@ -24,7 +24,7 @@ from src.paths import CHECKPOINTS_DIR, validate_project_path
 
 @dataclass
 class CheckpointMetadata:
-    epochs_trained: int
+    cumulative_epochs_completed: int
     final_loss: float | None = None
     model_config: dict[str, Any] | None = None
     training_config: dict[str, Any] | None = None
@@ -110,12 +110,12 @@ def load_metadata(path: Path) -> CheckpointMetadata | None:
     try:
         data = json.loads(metadata_file.read_text(encoding="utf-8"))
         return CheckpointMetadata(
-            epochs_trained=data["epochs_trained"],
+            created_at=data.get("created_at", ""),
             final_loss=data.get("final_loss"),
             model_config=data.get("model_config"),
-            training_config=data.get("training_config"),
-            created_at=data.get("created_at", ""),
             tokenizer_config=data.get("tokenizer_config"),
+            training_config=data.get("training_config"),
+            cumulative_epochs_completed=data["cumulative_epochs_completed"],
         )
     except (json.JSONDecodeError, TypeError, KeyError):
         return None
