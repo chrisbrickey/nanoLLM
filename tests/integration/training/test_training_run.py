@@ -58,6 +58,7 @@ def _make_trainer(
     checkpoint_path: Path | None = None,
     *,
     tokenizer_config: TokenizerConfig | None = None,
+    previous_epochs_completed: int,
 ) -> Trainer:
     model_config = ModelConfig(
         maxlen=MAXLEN,
@@ -81,6 +82,7 @@ def _make_trainer(
         training_config=config,
         dataloader=dataloader,
         batches_per_epoch=N_BATCHES,
+        previous_epochs_completed=previous_epochs_completed,
         checkpoint_path=checkpoint_path,
         tokenizer_config=tokenizer_config,
     )
@@ -88,25 +90,25 @@ def _make_trainer(
 
 class TestTrainLoop:
     def test_metrics_history_is_populated(self) -> None:
-        history = _make_trainer().train()
+        history = _make_trainer(previous_epochs_completed=0).train()
         assert "train_loss" in history
         assert len(history["train_loss"]) > 0
 
     def test_all_losses_are_finite_and_positive(self) -> None:
-        history = _make_trainer().train()
+        history = _make_trainer(previous_epochs_completed=0).train()
         for loss in history["train_loss"]:
             assert loss > 0.0
             assert loss < float("inf")
 
     def test_loss_decreases_over_training(self) -> None:
-        history = _make_trainer().train()
+        history = _make_trainer(previous_epochs_completed=0).train()
         losses = history["train_loss"]
         assert losses[0] > losses[-1], (
             f"Expected loss to decrease: first={losses[0]:.4f}, last={losses[-1]:.4f}"
         )
 
     def test_checkpoint_written_to_disk(self, project_checkpoint_path: Path) -> None:
-        _make_trainer(checkpoint_path=project_checkpoint_path).train()
+        _make_trainer(checkpoint_path=project_checkpoint_path, previous_epochs_completed=0).train()
         assert project_checkpoint_path.exists()
         assert (project_checkpoint_path / "weights.orbax").exists()
         assert (project_checkpoint_path / "metadata.json").exists()
@@ -123,6 +125,7 @@ class TestTrainerTokenizerConfigOnDisk:
         _make_trainer(
             checkpoint_path=project_checkpoint_path,
             tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
+            previous_epochs_completed=0,
         ).train()
 
         metadata_file = project_checkpoint_path / "metadata.json"
@@ -133,9 +136,31 @@ class TestTrainerTokenizerConfigOnDisk:
     def test_omitting_tokenizer_config_writes_null(
         self, project_checkpoint_path: Path
     ) -> None:
-        _make_trainer(checkpoint_path=project_checkpoint_path).train()
+        _make_trainer(checkpoint_path=project_checkpoint_path, previous_epochs_completed=0).train()
 
         metadata_file = project_checkpoint_path / "metadata.json"
         assert metadata_file.exists()
         saved = json.loads(metadata_file.read_text(encoding="utf-8"))
         assert saved.get("tokenizer_config") is None
+
+
+class TestTrainerPriorEpochsOnDisk:
+    """End-to-end verification that previous_epochs_completed is correctly added to
+    training_config.epochs and written to metadata.json as cumulative_epochs_completed."""
+
+    def test_prior_epochs_written_to_metadata_json(
+        self, project_checkpoint_path: Path
+    ) -> None:
+        """When previous_epochs_completed=10 and training_config.epochs=EPOCHS,
+        metadata.json on disk must record cumulative_epochs_completed=10+EPOCHS so
+        that each checkpoint gives an unambiguous cumulative training history."""
+        prior = 10
+        _make_trainer(
+            checkpoint_path=project_checkpoint_path,
+            previous_epochs_completed=prior,
+        ).train()
+
+        metadata_file = project_checkpoint_path / "metadata.json"
+        assert metadata_file.exists()
+        saved = json.loads(metadata_file.read_text(encoding="utf-8"))
+        assert saved["cumulative_epochs_completed"] == prior + EPOCHS

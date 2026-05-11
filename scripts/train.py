@@ -3,6 +3,9 @@ nanoLLM/scripts/train.py
 
 CLI entry point for training nanoLLM.
 
+This script does not load parameters from checkpoints.
+Training always commences on an untrained model.
+
 Usage:
     uv run nanollm-train
     uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint my_run.orbax
@@ -91,12 +94,15 @@ def main() -> None:
     )
 
     try:
+        logger.info("Loading data ...")
         stories = load_text_from_file(
             data_file,
             delimiter=tokenizer_config.delimiter,
             max_paragraphs=config.max_stories,
         )
+        logger.info("Data loading complete.")
 
+        logger.info("Processing data ...")
         dataloader, batches_per_epoch = preprocess_data(
             stories,
             batch_size=config.batch_size,
@@ -105,27 +111,26 @@ def main() -> None:
             shuffle=config.shuffle,
             seed=config.seed,
         )
+        logger.info("Data processing complete.")
 
         logger.info("Building model ...")
         model = NanoLLM(model_config)
         params = nnx.state(model, nnx.Param)
         param_count = sum(v.size for v in jax.tree_util.tree_leaves(params))
-        logger.info("Model ready — %s parameters", f"{param_count:,}")
+        logger.info("Model ready (%s parameters)", f"{param_count:,}")
 
+
+        logger.info(f"\n\n{'-' * 30}\nTraining initialized.\n{'-' * 30}\n\n")
         trainer = Trainer(
             model=model,
-            training_config=config,
             dataloader=dataloader,
             batches_per_epoch=batches_per_epoch,
+            training_config=config,     # includes epoch count for this training phrase
+            previous_epochs_completed=0,     # this script does not load pre-trained weights from checkpoints
             checkpoint_path=checkpoint_path,
         )
         trainer.train()
-
-        logger.info(
-            f"\n\n{'-' * 30}\n"
-            "Training complete.\n"
-            f"{'-' * 30}\n\n"
-        )
+        logger.info(f"\n\n{'-' * 30}\nTraining complete.\n{'-' * 30}\n\n")
 
     except (FileNotFoundError, ValueError, OSError) as e:
         logger.error("%s", e)

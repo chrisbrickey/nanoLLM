@@ -63,7 +63,7 @@ def two_checkpoints() -> Generator[tuple[Path, Path], None, None]:
 
     model_a, config_a = _make_model_with_config(seed=0)
     metadata_a = CheckpointMetadata(
-        epochs_trained=1,
+        cumulative_epochs_completed=1,
         model_config=dataclasses.asdict(config_a),
         tokenizer_config=dataclasses.asdict(tokenizer_config),
     )
@@ -71,7 +71,7 @@ def two_checkpoints() -> Generator[tuple[Path, Path], None, None]:
 
     model_b, config_b = _make_model_with_config(seed=42)
     metadata_b = CheckpointMetadata(
-        epochs_trained=2,
+        cumulative_epochs_completed=2,
         model_config=dataclasses.asdict(config_b),
         tokenizer_config=dataclasses.asdict(tokenizer_config),
     )
@@ -97,7 +97,7 @@ def one_checkpoint() -> Generator[Path, None, None]:
     tokenizer_config = TokenizerConfig()
     model, config = _make_model_with_config(seed=0)
     metadata = CheckpointMetadata(
-        epochs_trained=1,
+        cumulative_epochs_completed=1,
         model_config=dataclasses.asdict(config),
         tokenizer_config=dataclasses.asdict(tokenizer_config),
     )
@@ -151,10 +151,20 @@ class TestCliHappyPath:
         two_checkpoints: tuple[Path, Path],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """No --before/--after: CLI picks the two most recent checkpoints by mtime."""
+        """No --before/--after: CLI picks the two most recent checkpoints by mtime.
+
+        get_latest_checkpoints is mocked so this test is not affected by real
+        checkpoints on disk. The mtime-ordering logic inside that function is
+        covered by tests/unit/test_checkpoint.py::TestGetLatestCheckpoints.
+        """
         path_a, path_b = two_checkpoints
+        # newest-first matches the real return order of get_latest_checkpoints
         with patch("sys.argv", ["nanollm-compare"]):
-            main()
+            with patch(
+                "scripts.compare_checkpoints.get_latest_checkpoints",
+                return_value=[path_b, path_a],
+            ):
+                main()
 
         out = capsys.readouterr().out
         assert "WEIGHT MAGNITUDE" in out

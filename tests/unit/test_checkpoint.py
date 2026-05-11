@@ -108,7 +108,7 @@ class TestSaveCheckpoint:
         patched_orbax: MagicMock,
     ) -> None:
         metadata = CheckpointMetadata(
-            epochs_trained=3,
+            cumulative_epochs_completed=3,
             final_loss=1.23,
             model_config={"embed_dim": 12},
             training_config={"epochs": 3},
@@ -150,7 +150,7 @@ class TestCheckpointMetadata:
         """save_checkpoint persists tokenizer_config in metadata.json and
         load_metadata returns the same dict — exercised without orbax."""
         metadata = CheckpointMetadata(
-            epochs_trained=1,
+            cumulative_epochs_completed=1,
             tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
         )
         save_checkpoint(make_tiny_model(), project_checkpoint_path, metadata=metadata)
@@ -168,7 +168,7 @@ class TestCheckpointMetadata:
         _write_metadata_json(
             bundle_dir,
             {
-                "epochs_trained": 3,
+                "cumulative_epochs_completed": 3,
                 "final_loss": 1.5,
                 "model_config": None,
                 "training_config": None,
@@ -187,12 +187,12 @@ class TestCheckpointMetadata:
         project_checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
-        epochs_trained = 5
+        cumulative_epochs_completed = 5
         final_loss = 0.87
         model_config = {"embed_dim": 12, "num_heads": 3}
         training_config = {"epochs": 5, "batch_size": 4}
         metadata = CheckpointMetadata(
-            epochs_trained=epochs_trained,
+            cumulative_epochs_completed=cumulative_epochs_completed,
             final_loss=final_loss,
             model_config=model_config,
             training_config=training_config,
@@ -202,7 +202,7 @@ class TestCheckpointMetadata:
         loaded = load_metadata(project_checkpoint_path)
 
         assert loaded is not None
-        assert loaded.epochs_trained == epochs_trained
+        assert loaded.cumulative_epochs_completed == cumulative_epochs_completed
         assert loaded.final_loss == pytest.approx(final_loss)
         assert loaded.model_config == model_config
         assert loaded.training_config == training_config
@@ -225,7 +225,7 @@ class TestCheckpointMetadata:
 
     def test_load_metadata_returns_none_for_wrong_structure(self, tmp_path: Path) -> None:
         bundle_dir = tmp_path / "wrong_structure_bundle"
-        _write_metadata_json(bundle_dir, {"final_loss": 0.5})  # missing epochs_trained
+        _write_metadata_json(bundle_dir, {"final_loss": 0.5})  # missing cumulative_epochs_completed
         result = load_metadata(bundle_dir)
         assert result is None
 
@@ -331,7 +331,7 @@ class TestBuildModelFromCheckpoint:
         _write_metadata_json(
             project_checkpoint_path,
             {
-                "epochs_trained": 1,
+                "cumulative_epochs_completed": 1,
                 "tokenizer_config": SAMPLE_TOKENIZER_CONFIG,
             },
         )
@@ -344,7 +344,7 @@ class TestBuildModelFromCheckpoint:
         _write_metadata_json(
             project_checkpoint_path,
             {
-                "epochs_trained": 1,
+                "cumulative_epochs_completed": 1,
                 "model_config": SAMPLE_MODEL_CONFIG_DICT,
             },
         )
