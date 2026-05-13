@@ -49,8 +49,8 @@ def run_cli(data_file: Path):
         ]
         argv = base_argv + list(extra_args)
 
-        with patch("scripts.train.preprocess_data") as mock_preprocess, \
-             patch("scripts.train.Trainer") as MockTrainer:
+        with patch("src.training.runner.preprocess_data") as mock_preprocess, \
+             patch("src.training.runner.Trainer") as MockTrainer:
             mock_preprocess.return_value = (MagicMock(), 10)
             MockTrainer.return_value.train.return_value = {"train_loss": []}
 
@@ -72,7 +72,7 @@ class TestCliHappyPath:
             "--max-stories", "6",
             "--epochs", "1",
             "--batch-size", "2",
-            "--checkpoint", str(checkpoint_path),
+            "--destination-checkpoint", str(checkpoint_path),
         ]
         with patch("sys.argv", argv):
             main()
@@ -111,7 +111,7 @@ class TestCliArguments:
     def test_checkpoint_path_passed_to_trainer(
         self, run_cli, checkpoint_path: Path
     ) -> None:
-        kwargs = run_cli("--checkpoint", str(checkpoint_path))
+        kwargs = run_cli("--destination-checkpoint", str(checkpoint_path))
         assert kwargs["checkpoint_path"] == checkpoint_path
 
     def test_default_checkpoint_path(self, run_cli) -> None:
@@ -154,9 +154,9 @@ class TestCliErrorHandling:
             "--data-file", str(data_file),
             "--epochs", "1",
             "--batch-size", "2",
-            "--checkpoint", str(checkpoint),
+            "--destination-checkpoint", str(checkpoint),
         ]
-        with patch("scripts.train.Trainer") as MockTrainer:
+        with patch("src.training.runner.Trainer") as MockTrainer:
             MockTrainer.return_value.train.side_effect = OSError("disk full")
             with patch("sys.argv", argv):
                 with pytest.raises(SystemExit) as exc_info:

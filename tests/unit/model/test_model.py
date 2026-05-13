@@ -1,10 +1,11 @@
 """Unit tests for src/model/model.py"""
 
 import jax.numpy as jnp
+import flax.nnx as nnx
 import pytest
 
 from src.config import ModelConfig
-from src.model.model import NanoLLM
+from src.model.model import NanoLLM, count_params
 
 # Test constants - generic sequence lengths
 SEQ_LENGTH_SMALL = 4
@@ -105,3 +106,36 @@ class TestNanoLLMForwardPass:
         too_long = jnp.zeros((1, SMALL_MAXLEN + 1), dtype=jnp.int32)
         with pytest.raises(ValueError, match="seq_len"):
             small_model(too_long)
+
+
+class TestCountParams:
+    """Test suite for count_params() standalone function"""
+
+    def test_returns_int(self, small_model: NanoLLM) -> None:
+        assert isinstance(count_params(small_model), int)
+
+    def test_positive_count_for_real_model(self, small_model: NanoLLM) -> None:
+        assert count_params(small_model) > 0
+
+    def test_count_scales_with_model_depth(self) -> None:
+        deep_config = ModelConfig(
+            maxlen=SMALL_MAXLEN,
+            vocab_size=SMALL_VOCAB_SIZE,
+            embed_dim=SMALL_EMBED_DIM,
+            num_heads=SMALL_NUM_HEADS,
+            feed_forward_dim=SMALL_FF_DIM,
+            num_transformer_blocks=2,
+        )
+        assert count_params(NanoLLM(_small_config())) < count_params(NanoLLM(deep_config))
+
+    def test_exact_count_for_linear_without_bias(self) -> None:
+        linear = nnx.Linear(4, 6, use_bias=False, rngs=nnx.Rngs(0))
+        assert count_params(linear) == 24  # kernel: 4 * 6
+
+    def test_excludes_non_param_variables(self) -> None:
+        class _MixedModule(nnx.Module):
+            def __init__(self, rngs: nnx.Rngs) -> None:
+                self.linear = nnx.Linear(4, 6, use_bias=False, rngs=rngs)
+                self.running_mean = nnx.Variable(jnp.zeros((6,)))
+
+        assert count_params(_MixedModule(nnx.Rngs(0))) == 24

@@ -1,11 +1,21 @@
 """NanoLLM transformer model architecture."""
 
+import jax
 import jax.numpy as jnp
 import flax.nnx as nnx
 
 from src.config import ModelConfig
 from src.model.embeddings import TokenAndPositionEmbedding
 from src.model.blocks import TransformerBlock
+
+
+def count_params(model: nnx.Module) -> int:
+    """Return total number of trainable parameters in the model.
+
+    This is a standalone utility because it can work on an instance
+    of NanoLLM but it can also work for any flax model."""
+    params = nnx.state(model, nnx.Param)
+    return sum(v.size for v in jax.tree_util.tree_leaves(params))
 
 
 class NanoLLM(nnx.Module):

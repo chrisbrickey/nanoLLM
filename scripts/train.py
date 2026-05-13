@@ -1,56 +1,45 @@
 """
 nanoLLM/scripts/train.py
 
-CLI entry point for training nanoLLM.
+CLI entry point for training an untrained nanoLLM.
 
-This script does not load parameters from checkpoints.
-Training always commences on an untrained model.
+This script loads an untrained model from configs
+and runs N epochs of training.
+
+This script is not capable of loading pre-trained weights.
+To continue training in subsequent phases, use the `nanollm-resume`
+script, which loads pre-trained weights from a checkpoint
+and then applies the same training functionality.
 
 Usage:
+    # fresh training with default configuration
     uv run nanollm-train
-    uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint my_run.orbax
+
+    # fresh training with example overrides
+    uv run nanollm-train --epochs 5 --batch-size 64 --destination-checkpoint my_run.orbax
 """
 
 import argparse
-import dataclasses
 import logging
 import sys
-from pathlib import Path
 
-import flax.nnx as nnx
-import jax
-
-from src.config import (
-    ModelConfig,
-    TokenizerConfig,
-    TrainingConfig,
-)
-from src.checkpoint import default_checkpoint_path
-from src.paths import DEFAULT_DATA_FILE
+from src.config import ModelConfig, TokenizerConfig
 from src.logging_setup import setup_logging
-from src.data.loader import load_text_from_file, preprocess_data
-from src.model.model import NanoLLM
-from src.training.trainer import Trainer
+from src.model.model import NanoLLM, count_params
+from src.training.cli import (
+    add_shared_training_args,
+    build_training_config,
+    resolve_data_file,
+    resolve_destination_checkpoint,
+)
+from src.training.runner import execute_training_run
 
 logger = logging.getLogger(__name__)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train nanoLLM from the command line.")
-    parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--epochs", type=int, default=None)
-    parser.add_argument("--max-stories", type=int, default=None)
-    parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--shuffle", dest="shuffle", action="store_true")
-    parser.add_argument("--no-shuffle", dest="shuffle", action="store_false")
-    parser.set_defaults(shuffle=None)
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default=None,
-        help="Path to save checkpoint bundle directory (default: checkpoints/NanoLLM_{timestamp}/)",
-    )
-    parser.add_argument("--data-file", type=str, default=None, help="Path to training data file")
+    parser = argparse.ArgumentParser(description="Train an untrained nanoLLM.")
+    add_shared_training_args(parser)
     return parser.parse_args()
 
 
@@ -58,82 +47,45 @@ def main() -> None:
     setup_logging()
     args = _parse_args()
 
-    overrides: dict[str, object] = {}
-    if args.batch_size is not None:
-        overrides["batch_size"] = args.batch_size
-    if args.epochs is not None:
-        overrides["epochs"] = args.epochs
-    if args.max_stories is not None:
-        overrides["max_stories"] = args.max_stories
-    if args.seed is not None:
-        overrides["seed"] = args.seed
-    if args.shuffle is not None:
-        overrides["shuffle"] = args.shuffle
 
-    config = dataclasses.replace(TrainingConfig(), **overrides)
+    # --- Prepare Inputs ---
 
-    data_file = Path(args.data_file) if args.data_file else DEFAULT_DATA_FILE
-    checkpoint_path = Path(args.checkpoint) if args.checkpoint else default_checkpoint_path(NanoLLM.__name__)
-
-    tokenizer_config = TokenizerConfig()
-    model_config = ModelConfig()
-
-    logger.info(
-        f"\n\n{'-' * 30}\n"
-        "Commencing nanoLLM training:\n"
-        "\tdata file:   %s\n"
-        "\tmax stories: %s\n"
-        "\tepochs:      %d\n"
-        "\tbatch size:  %d\n"
-        "\tshuffle:     %s\n"
-        "\tseed:        %d\n"
-        "\tcheckpoint:  %s\n"
-        f"{'-' * 30}\n\n",
-        data_file, config.max_stories, config.epochs,
-        config.batch_size, config.shuffle, config.seed, checkpoint_path,
-    )
 
     try:
-        logger.info("Loading data ...")
-        stories = load_text_from_file(
-            data_file,
-            delimiter=tokenizer_config.delimiter,
-            max_paragraphs=config.max_stories,
-        )
-        logger.info("Data loading complete.")
+        # Construct configs from CLI arguments
+        training_config = build_training_config(args)
+        data_source = resolve_data_file(args)
+        checkpoint_destination = resolve_destination_checkpoint(args)
+    except Exception as e:
+        logger.error(f"Failed to construct configs from CLI arguments: {e}")
+        sys.exit(1)
 
-        logger.info("Processing data ...")
-        dataloader, batches_per_epoch = preprocess_data(
-            stories,
-            batch_size=config.batch_size,
-            maxlen=model_config.maxlen,
-            tokenizer_config=tokenizer_config,
-            shuffle=config.shuffle,
-            seed=config.seed,
-        )
-        logger.info("Data processing complete.")
-
-        logger.info("Building model ...")
+    try:
+        # Load fresh, untrained model from configs
+        logger.info("Building untrained model...")
+        model_config = ModelConfig()
         model = NanoLLM(model_config)
-        params = nnx.state(model, nnx.Param)
-        param_count = sum(v.size for v in jax.tree_util.tree_leaves(params))
-        logger.info("Model ready (%s parameters)", f"{param_count:,}")
+        tokenizer_config = TokenizerConfig()
+        logger.info(f"Model ready ({count_params(model)} parameters)")
+    except Exception as e:
+        logger.error(f"Failed to build untrained model from configs: {e}")
+        sys.exit(1)
 
 
-        logger.info(f"\n\n{'-' * 30}\nTraining initialized.\n{'-' * 30}\n\n")
-        trainer = Trainer(
+    # --- Execute Operations ---
+
+
+    try:
+        execute_training_run(
             model=model,
-            dataloader=dataloader,
-            batches_per_epoch=batches_per_epoch,
-            training_config=config,     # includes epoch count for this training phrase
-            previous_epochs_completed=0,     # this script does not load pre-trained weights from checkpoints
-            checkpoint_path=checkpoint_path,
+            model_config=model_config,
+            tokenizer_config=tokenizer_config,
+            data_source=data_source,
+            training_config=training_config,
+            checkpoint_destination=checkpoint_destination,
         )
-        trainer.train()
-        logger.info(f"\n\n{'-' * 30}\nTraining complete.\n{'-' * 30}\n\n")
-
-    except (FileNotFoundError, ValueError, OSError) as e:
-        logger.error("%s", e)
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
         sys.exit(1)
 
 

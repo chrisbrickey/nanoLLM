@@ -39,15 +39,12 @@ I developed the code iteratively, trying out implementations in Jupyter notebook
 This project uses [UV](https://docs.astral.sh/uv/) as the package manager.
 All dependencies are managed via `pyproject.toml` and installed using UV.
 
-| Package         | Purpose                                                              |
-|-----------------|----------------------------------------------------------------------|
-| **python 3.11** | runtime                                             | 
-| **jupyter**     | Interactive notebook environment for development and experimentation |
-| **jax**         | High-performance numerical computing and automatic differentiation   |
-| **grain**       | Efficient data loading and preprocessing library for JAX             |
-| **numpy**       | Numerical computing library for array operations                     |
-| **matplotlib**  | Data visualization and plotting                                      |
-| **tiktoken**    | Converts input text into tokens (array of ints)                      |
+| Major Packages       | Purpose                                                              |
+|----------------------|----------------------------------------------------------------------|
+| **python 3.11**      | runtime                                             |
+| **jax**              | High-performance numerical computing and automatic differentiation   |
+| **grain**            | Efficient data loading and preprocessing library for JAX             |
+| **tiktoken**         | Converts input text into tokens (array of ints)                      |
 | **orbax-checkpoint** | Model checkpoint saving, loading, and restoration              |
 
 
@@ -77,7 +74,7 @@ nanoLLM/
 _*I added a git filter to clean the notebooks prior to committing (e.g., removes outputs and execution counts)._
 
 
-## Setup
+## Usage
 
 ### 1. Install dependencies
 
@@ -85,39 +82,50 @@ _*I added a git filter to clean the notebooks prior to committing (e.g., removes
 uv sync
 ```
 
-### 2. Train the model
+### 2. Train a model
+Training is a resource-intensive process that is best accomplished across multiple, well-documented phases. 
+NanoLLM training processes are fully integrated with checkpoint persistence to support multi-phase training and experiment reproducibility.
+
+Two CLI scripts are provided:
+- `nanollm-train` for a fresh start: builds an untrained `NanoLLM(ModelConfig())`, trains for default or specified number of epochs, and persists a new checkpoint bundle.
+- `nanollm-resume` for continued training: loads weights and configs from an existing checkpoint, trains for additional epochs, and persists a new checkpoint bundle.
+
+_The total epochs trained across all training sessions is recorded as `cumulative_epochs_completed` in the checkpoint metadata, regardless of which script is used._
+
+#### Train from scratch
+Use this script the first time you train the model or at the beginning of an experiment. 
 
 ```
-# run with default configuration
+# fresh training with default configuration
 uv run nanollm-train
 
-# run with some overrides
-uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint {desired_checkpoint_directory}/{training_run_name}/
+# fresh training with example overrides
+uv run nanollm-train --epochs 5 --batch-size 64 --destination-checkpoint path/to/new
+```
+
+#### Resume training
+Use this script for subsequent training sessions. If not specified, it uses a utility to discover the most recent checkpoint.
+
+```
+# resume training with default configuration
+uv run nanollm-resume
+
+# resume training with example overrides
+uv run nanollm-resume --epochs 5 --source-checkpoint {checkpoint_directory}/{prior_run_name}/ 
 ```
 
 #### Optional Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--batch-size` | Number of samples per training batch | `32` |
-| `--epochs` | Number of full passes through the training data | `3` |
-| `--max-stories` | Maximum number of stories to load from the data file | `100` |
-| `--seed` | Random seed for reproducibility | `42` |
-| `--shuffle` / `--no-shuffle` | Enable or disable dataset shuffling | `False` |
-| `--data-file` | Path to the training data file | `data/TinyStories-1000.txt` |
-| `--checkpoint` | Path to save the checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
-
-
-### 3. [Optional] Launch jupyter notebooks
-
-```
-uv run jupyter notebook
-
-# alternative interface
-uv run jupyter lab
-```
-
-This will open Jupyter in your default browser at `http://localhost:8888`.
+| Flag | Used by      | Description | Default |
+|------|--------------|-------------|---------|
+| `--epochs` | both scripts | Number of epochs to run **in this invocation** (not cumulative) | `3` |
+| `--batch-size` | both scripts | Number of samples per training batch | `32` |
+| `--max-stories` | both scripts | Maximum number of stories to load from the data file | `100` |
+| `--seed` | both scripts | Random seed for reproducibility | `42` |
+| `--shuffle` / `--no-shuffle` | both scripts | Enable or disable dataset shuffling | `False` |
+| `--data-file` | both scripts | Path to the training data file | `data/TinyStories-1000.txt` |
+| `--destination-checkpoint` | both scripts | Path to save the new checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
+| `--source-checkpoint` | resume only  | Path to the checkpoint bundle to load weights from | latest bundle in `checkpoints/` |
 
 
 ## Debugging Tools
@@ -152,6 +160,17 @@ uv run nanollm-compare --before checkpoints/run_A/ --after checkpoints/run_B/
 | `--after` | Path to the "after" checkpoint bundle | most recent checkpoint |
 | `--threshold` | Minimum absolute difference to count a parameter as changed | `1e-8`                 |
 
+
+### Jupyter Notebooks
+Existing notebooks document code development and previous experiments. 
+The below commands will open Jupyter in your default browser at `http://localhost:8888`.
+
+```
+uv run jupyter notebook
+
+# alternative interface
+uv run jupyter lab
+```
 
 ### Environment / PATH issues
 

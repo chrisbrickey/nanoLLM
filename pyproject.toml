@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 nanollm-train = "scripts.train:main"
+nanollm-resume = "scripts.resume:main"
 nanollm-compare = "scripts.compare_checkpoints:main"
 
 [tool.pytest.ini_options]
