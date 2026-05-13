@@ -38,7 +38,7 @@ from src.training.cli import (
     resolve_data_file,
     resolve_destination_checkpoint,
 )
-from src.training.runner import execute_training_run
+from src.training.runner import run
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +109,8 @@ def main() -> None:
 
 
     try:
-        execute_training_run(
+        run(
             model=model,
-            model_config=model_config,
             tokenizer_config=tokenizer_config,
             data_source=data_source,
             training_config=training_config,

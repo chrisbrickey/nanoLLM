@@ -49,9 +49,11 @@ def run_cli(data_file: Path):
         ]
         argv = base_argv + list(extra_args)
 
-        with patch("src.training.runner.preprocess_data") as mock_preprocess, \
+        with patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as MockTrainer:
-            mock_preprocess.return_value = (MagicMock(), 10)
+            mock_calc.return_value = 10
+            mock_preprocess.return_value = MagicMock()
             MockTrainer.return_value.train.return_value = {"train_loss": []}
 
             with patch("sys.argv", argv):

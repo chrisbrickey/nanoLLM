@@ -1,4 +1,8 @@
-"""Data loading utilities for story datasets."""
+"""Utilities for loading and preprocessing text data for training.
+
+Provides functions to load delimited text from files, calculate batch
+counts, and build a Grain DataLoader from raw text blocks.
+"""
 
 import logging
 from pathlib import Path
@@ -7,12 +11,13 @@ import grain.python as pygrain
 
 logger = logging.getLogger(__name__)
 
-from src.config import TokenizerConfig
+from src.config import TokenizerConfig, TrainingConfig, ModelConfig
 from src.paths import validate_project_path, format_path_for_display
 from src.data.dataset import StoryDataset
 
 
 def load_text_from_file(
+    *,
     file_path: str | Path,
     delimiter: str,
     max_paragraphs: int | None = None
@@ -22,13 +27,12 @@ def load_text_from_file(
     Paragraphs are loaded line by line to avoid loading the entire file into memory.
 
     Args:
-        file_path: Path to the text file containing stories
+        file_path: Path to the text file containing paragraphs
         delimiter: String that marks the end of a paragraph
-        max_paragraphs: Maximum number of stories to load (None for all)
+        max_paragraphs: Maximum number of paragraphs to load (None for all)
 
     Returns:
-        List of text strings where each element represents a paragraph.
-        In the case of TinyStories-1000.txt, each element is a story.
+        List of stripped text strings, one per delimited paragraph
 
     Raises:
         FileNotFoundError: If the file does not exist
@@ -78,63 +82,76 @@ def load_text_from_file(
     return paragraphs
 
 
-def preprocess_data(
-    list_of_paragraphs: list[str],
-    batch_size: int,
-    maxlen: int,
-    tokenizer_config: TokenizerConfig,
-    shuffle: bool,
-    seed: int,
-) -> tuple[pygrain.DataLoader, int]:
-    """
-    Preprocess data with memory-efficient chunk reading.
+def calculate_batches(record_count: int, batch_size: int) -> int:
+    """Compute and validate batches per epoch from dataset size and batch size.
 
     Args:
-        list_of_paragraphs: list of delimiter-separated strings
-        batch_size: Batch size for training
-        maxlen: Maximum sequence length
-        tokenizer_config: Tokenizer configuration (encoder, delimiter, pad token)
-        shuffle: Whether to shuffle the data
-        seed: Random seed for reproducibility
+        record_count: Total number of records in the dataset
+        batch_size: Number of records per batch
 
     Returns:
-        Tuple of (Grain DataLoader, estimated_batches_per_epoch)
+        Number of complete batches per epoch (integer division, remainder dropped)
 
     Raises:
-        ValueError: If no valid stories found in the dataset
+        ValueError: if batches_per_epoch <= 0
+    """
+    batches_per_epoch = record_count // batch_size
+    if batches_per_epoch <= 0:
+        raise ValueError(
+            f"Calculated {batches_per_epoch} batches per epoch but must be > 0. Training aborted."
+        )
+    logger.info(f"Calculated batches per epoch: {batches_per_epoch}")
+    return batches_per_epoch
+
+def preprocess_data(
+    *,
+    text_blocks: list[str],
+    model_config: ModelConfig,
+    tokenizer_config: TokenizerConfig,
+    training_config: TrainingConfig,
+) -> pygrain.DataLoader:
+    """Tokenize, pad, and batch text blocks into a Grain DataLoader.
+
+    Args:
+        text_blocks: List of delimiter-separated strings (one per paragraph)
+        model_config: Model configuration; maxlen determines the padded sequence length
+        tokenizer_config: Tokenizer settings (encoder, delimiter, pad token)
+        training_config: Training hyperparameters (batch size, shuffle, seed)
+
+    Returns:
+        Grain DataLoader yielding batches of shape (batch_size, maxlen)
+
+    Raises:
+        ValueError: If no valid text blocks are found in the dataset
     """
 
-    # Validate loaded data
-    total_size = len(list_of_paragraphs)
-    if total_size == 0:
-        raise ValueError("No valid stories found in the dataset")
-
-    # Calculate estimated batches per epoch
-    estimated_batches_per_epoch = total_size // batch_size
-    logger.debug(f"Estimated batches per epoch: {estimated_batches_per_epoch}")
-
-    # Create efficient dataset
-    dataset = StoryDataset(list_of_paragraphs, maxlen, tokenizer_config)
-
-    # Configure sampler with sharding support
-    #   num_epochs parameter here is required by the pygrain API and it is analogous to repetitions per epoch.
-    #   This variable is different than the 'epochs' of the outer training loop, which are set in Trainer class.
-    sampler = pygrain.IndexSampler(
-        num_records=len(dataset),
-        shuffle=shuffle,
-        seed=seed,
-        shard_options=pygrain.NoSharding(),
-        num_epochs=1, # dataset repetitions per DataLoader pass (pygrain API)
+    # Create dataset, which contains the raw data and knows how to tokenize
+    # and pad each item into a fixed-length array of integers on demand.
+    dataset = StoryDataset(
+        stories=text_blocks,
+        maxlen=model_config.maxlen,
+        tokenizer_config=tokenizer_config
     )
 
-    # Create DataLoader with efficient batching
+    # Create sampler with sharding support. This decides the order
+    # in which the dataset's indices are visited (shuffled or sequential).
+    sampler = pygrain.IndexSampler(
+        num_records=len(dataset),
+        shuffle=training_config.shuffle,
+        seed=training_config.seed,
+        shard_options=pygrain.NoSharding(),
+
+        # num_epochs parameter here is required by the pygrain API and it is analogous to repetitions per epoch.
+        # This variable is different than the 'epochs' of the outer training loop, which are set in Trainer class.
+        num_epochs=1,
+    )
+
+    # Create dataloader, which groups individual samples into batches for the training loop to consume later.
     dataloader = pygrain.DataLoader(
         data_source=dataset,
         sampler=sampler,
-        operations=[
-            pygrain.Batch(batch_size=batch_size, drop_remainder=True)
-        ]
+        operations=[pygrain.Batch(batch_size=training_config.batch_size, drop_remainder=True)]
     )
+    logger.info(f"Created DataLoader with batch_size={training_config.batch_size}, maxlen={model_config.maxlen}")
 
-    logger.debug(f"Created DataLoader with batch_size={batch_size}, maxlen={maxlen}")
-    return dataloader, estimated_batches_per_epoch
+    return dataloader

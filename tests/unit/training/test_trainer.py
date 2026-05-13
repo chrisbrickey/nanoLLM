@@ -23,6 +23,7 @@ BATCH_SIZE = 2
 N_BATCHES = 4  # yields 2 log entries with default log_every_n_steps=2
 MAXLEN = 4  # matches conftest.TINY_MAXLEN
 STUB_LOSS = 0.5
+SAMPLE_DATA_SOURCE = Path("/fake/data/stories.txt")
 
 SAMPLE_TOKENIZER_CONFIG = TokenizerConfig(
     delimiter="<|endoftext|>",
@@ -74,6 +75,7 @@ def _build_trainer(
         training_config=training_config or _make_config(),
         dataloader=_make_dataloader(),
         batches_per_epoch=N_BATCHES,
+        data_source=SAMPLE_DATA_SOURCE,
         **kwargs,  # type: ignore[arg-type]
     )
     trainer.train_step = _stub_train_step  # type: ignore[assignment]
@@ -89,25 +91,12 @@ class TestTrainerInit:
             training_config=_make_config(),
             dataloader=_make_dataloader(),
             batches_per_epoch=N_BATCHES,
+            data_source=SAMPLE_DATA_SOURCE,
             previous_epochs_completed=0,
         )
         assert isinstance(trainer.optimizer, nnx.ModelAndOptimizer)
         assert isinstance(trainer.metrics, nnx.MultiMetric)
         assert callable(trainer.train_step)
-
-    @pytest.mark.parametrize("batches_per_epoch", [0, -1])
-    def test_rejects_non_positive_batches_per_epoch(
-        self, make_tiny_model: Callable[..., NanoLLM], batches_per_epoch: int
-    ) -> None:
-        """Defense-in-depth check at the Trainer's public boundary."""
-        with pytest.raises(ValueError, match="batches_per_epoch"):
-            Trainer(
-                model=make_tiny_model(),
-                training_config=_make_config(),
-                dataloader=_make_dataloader(),
-                batches_per_epoch=batches_per_epoch,
-                previous_epochs_completed=0,
-            )
 
 
 class TestTrainerTrain:
@@ -153,6 +142,7 @@ class TestTrainerTrain:
             training_config=_make_config(),
             dataloader=_FakeDataLoader(n_batches=0, maxlen=MAXLEN, batch_size=BATCH_SIZE),
             batches_per_epoch=10,  # enough for a valid schedule; dataloader yields nothing
+            data_source=SAMPLE_DATA_SOURCE,
             previous_epochs_completed=0,
         )
         trainer.train_step = _stub_train_step  # type: ignore[assignment]

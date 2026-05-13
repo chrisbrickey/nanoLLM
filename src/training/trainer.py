@@ -16,13 +16,6 @@ from src.training.step import make_train_step
 
 logger = logging.getLogger(__name__)
 
-
-def _format_banner(text: str, width: int = 30) -> str:
-    """Wrap a short message in dashed top/bottom banner lines with breathing room."""
-    edge = "-" * width
-    return f"\n\n{edge}\n{text}\n{edge}\n\n"
-
-
 def build_training_header_lines(
     *,
     data_source: Path | None,
@@ -34,7 +27,16 @@ def build_training_header_lines(
     previous_epochs: int = 0,
 ) -> list[str]:
     """Build a per-invocation summary header as a list of lines.
-    Callers join and log the return value."""
+    Callers join and log the return value.
+
+    Args:
+        data_source: Path to the training data file
+        training_config: Training hyperparameters for this run
+        checkpoint_destination: Where the checkpoint will be written
+        checkpoint_source: Source checkpoint path; if provided, resume-related
+            lines are prepended to the header
+        previous_epochs: Number of epochs completed before this run
+    """
 
     lines = []
     if checkpoint_source is not None:
@@ -61,22 +63,31 @@ class Trainer:
 
     def __init__(
         self,
+        *,
         model: NanoLLM,
         dataloader: Iterable,
+        data_source: Path,                                # used for the start-of-run header log
         batches_per_epoch: int,
         training_config: TrainingConfig,
-        previous_epochs_completed: int,
-        *,
-        checkpoint_path: Path | None = None,                # falls back to default within method
-        tokenizer_config: TokenizerConfig | None = None,    # falls back to default within method
-        data_source: Path | None = None,                    # used for the start-of-run header log
-        checkpoint_source: Path | None = None,              # only set when resuming training
+        tokenizer_config: TokenizerConfig | None = None,  # if None, omitted from checkpoint metadata
+        checkpoint_path: Path | None = None,                # if None, no checkpoint is written
+        checkpoint_source: Path | None = None,              # only passed as parameter when resuming training
+        previous_epochs_completed: int = 0,                 # only passed as parameter when resuming training
     ) -> None:
+        """Configure and initialize the training session.
 
-        if batches_per_epoch <= 0:
-            raise ValueError(
-                f"batches_per_epoch must be > 0, got {batches_per_epoch}"
-            )
+        Args:
+            model: The NanoLLM model to train
+            dataloader: Iterable that yields batches for each epoch
+            data_source: Path to the training data file; used in the run header log
+            batches_per_epoch: Number of batches per epoch; used to build the LR schedule
+            training_config: Training hyperparameters
+            tokenizer_config: Tokenizer settings; if None, omitted from checkpoint metadata
+            checkpoint_path: Destination for the saved checkpoint; if None, no checkpoint is written
+            checkpoint_source: Source checkpoint path; only set when resuming a prior run
+            previous_epochs_completed: Epochs completed before this run; added to the
+                cumulative epoch count saved in the checkpoint
+        """
 
         self.model = model
         self.training_config = training_config
@@ -100,10 +111,12 @@ class Trainer:
     def train(self) -> dict[str, list[float]]:
         """Orchestrates the full training loop.
 
-        Returns metrics_history, such as the history of the loss across all training steps."""
+        Returns:
+            Metrics history dict keyed by metric name (e.g. ``"train_loss"``),
+            with values recorded every ``log_every_n_steps`` steps
+        """
 
         # Log initialization data
-        logger.info(_format_banner("Commencing training..."))
         header_lines = build_training_header_lines(
             data_source=self.data_source,
             training_config=self.training_config,
@@ -154,15 +167,18 @@ class Trainer:
             if epoch_losses:
                 logger.info("Average Loss Overall: %.4f",(sum(epoch_losses) / len(epoch_losses)))
 
+        cumulative_epochs_completed = previous_epochs_completed + current_epochs
         logger.info(
-            f"All {current_epochs} epochs completed. This is in addition to {previous_epochs_completed} epochs accumulated during previous trainings."
+            f"\n\tAll {current_epochs} epochs completed.\n"
+            f"\tThis is in addition to {previous_epochs_completed} epochs accumulated during previous trainings.\n"
+            f"\tCumulative epochs completed: {cumulative_epochs_completed}.\n"
         )
 
         # Persist checkpoint
         if self.checkpoint_path:
             final_loss = metrics_history["train_loss"][-1] if metrics_history["train_loss"] else None
             metadata = CheckpointMetadata(
-                cumulative_epochs_completed=(previous_epochs_completed + current_epochs),
+                cumulative_epochs_completed=cumulative_epochs_completed,
                 final_loss=final_loss,
                 model_config=dataclasses.asdict(self.model.config),
                 training_config=dataclasses.asdict(self.training_config),
@@ -172,5 +188,4 @@ class Trainer:
         else:
             logger.info("Checkpoint path undefined. No checkpoint persisted.")
 
-        logger.info(_format_banner("Training complete."))
         return metrics_history

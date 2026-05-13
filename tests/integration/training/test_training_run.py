@@ -15,6 +15,7 @@ from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
 from src.training.trainer import Trainer
 
+SAMPLE_DATA_SOURCE = Path("/fake/data/stories.txt")
 SAMPLE_TOKENIZER_CONFIG = TokenizerConfig(
     delimiter="<|endoftext|>",
     name="gpt2",
@@ -82,6 +83,7 @@ def _make_trainer(
         training_config=config,
         dataloader=dataloader,
         batches_per_epoch=N_BATCHES,
+        data_source=SAMPLE_DATA_SOURCE,
         previous_epochs_completed=previous_epochs_completed,
         checkpoint_path=checkpoint_path,
         tokenizer_config=tokenizer_config,

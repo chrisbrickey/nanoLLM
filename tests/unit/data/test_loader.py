@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import mock_open, patch
 import pytest
 
-from src.data.loader import load_text_from_file
+from src.data.loader import load_text_from_file, calculate_batches
 
 TEST_FILE_PATH = "data/test_file.txt"  # Relative to project root
 DELIMITER = "<|endoftext|>"
@@ -29,7 +29,7 @@ class TestLoadStoriesFromFile:
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
-                stories = load_text_from_file(TEST_FILE_PATH, DELIMITER)
+                stories = load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER)
 
         assert len(stories) == 1
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
@@ -42,7 +42,7 @@ class TestLoadStoriesFromFile:
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
-                stories = load_text_from_file(TEST_FILE_PATH, DELIMITER)
+                stories = load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER)
 
         assert len(stories) == 3
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
@@ -54,7 +54,7 @@ class TestLoadStoriesFromFile:
         """Test that FileNotFoundError is raised when file doesn't exist"""
         with patch.object(Path, "exists", return_value=False):
             with pytest.raises(FileNotFoundError, match="Data file not found"):
-                load_text_from_file(TEST_FILE_PATH, DELIMITER)
+                load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER)
 
     def test_empty_file(self, caplog):
         """Test loading from an empty file returns empty list"""
@@ -62,7 +62,7 @@ class TestLoadStoriesFromFile:
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
-                stories = load_text_from_file(TEST_FILE_PATH, DELIMITER)
+                stories = load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER)
 
         assert stories == []
         assert "Loaded 0 paragraphs" in caplog.text
@@ -73,7 +73,7 @@ class TestLoadStoriesFromFile:
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
-                stories = load_text_from_file(TEST_FILE_PATH, DELIMITER, max_paragraphs=2)
+                stories = load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER, max_paragraphs=2)
 
         assert len(stories) == 2
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
@@ -86,7 +86,7 @@ class TestLoadStoriesFromFile:
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
-                stories = load_text_from_file(TEST_FILE_PATH, DELIMITER)
+                stories = load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER)
 
         assert len(stories) == 2
         assert stories[0] == f"{SAMPLE_STORY_1}{DELIMITER}"
@@ -95,12 +95,12 @@ class TestLoadStoriesFromFile:
     def test_path_outside_project_raises_error(self):
         """Test that paths outside project root are rejected"""
         with pytest.raises(ValueError, match="outside the project root"):
-            load_text_from_file("../../etc/passwd", DELIMITER)
+            load_text_from_file(file_path="../../etc/passwd", delimiter=DELIMITER)
 
     def test_absolute_path_outside_project_raises_error(self):
         """Test that absolute paths outside project are rejected"""
         with pytest.raises(ValueError, match="outside the project root"):
-            load_text_from_file("/etc/passwd", DELIMITER)
+            load_text_from_file(file_path="/etc/passwd", delimiter=DELIMITER)
 
     def test_log_output_shows_relative_path(self, caplog):
         """Test that log output shows path relative to project root, not absolute"""
@@ -108,8 +108,26 @@ class TestLoadStoriesFromFile:
 
         with patch("builtins.open", mock_open(read_data=file_content)):
             with patch.object(Path, "exists", return_value=True):
-                load_text_from_file(TEST_FILE_PATH, DELIMITER)
+                load_text_from_file(file_path=TEST_FILE_PATH, delimiter=DELIMITER)
 
         assert TEST_FILE_PATH in caplog.text
         assert "/Users" not in caplog.text
         assert f"Loading data from {TEST_FILE_PATH}" in caplog.text
+
+
+class TestCalculateBatches:
+    """Unit tests for calculate_batches()"""
+
+    def test_returns_correct_value(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.INFO, logger="src.data.loader"):
+            result = calculate_batches(12, 4)
+        assert result == 3
+        assert "Calculated batches per epoch: 3" in caplog.text
+
+    def test_raises_when_batches_would_be_zero(self) -> None:
+        with pytest.raises(ValueError, match="must be > 0"):
+            calculate_batches(3, 4)  # 3 // 4 == 0
+
+    def test_raises_when_record_count_is_zero(self) -> None:
+        with pytest.raises(ValueError, match="must be > 0"):
+            calculate_batches(0, 4)

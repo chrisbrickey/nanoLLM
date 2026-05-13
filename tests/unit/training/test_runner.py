@@ -1,11 +1,9 @@
 """Unit tests for src/training/runner.py
 
-Both public functions are tested by mocking their I/O dependencies so that
-tests exercise orchestration logic only — no disk access, no tokenization,
+Tests exercise orchestration logic only — no disk access, no tokenization,
 no JAX compilation.
 """
 
-import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +11,7 @@ import pytest
 
 from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
-from src.training.runner import execute_training_run, prepare_dataloader
+from src.training.runner import run
 
 SAMPLE_DATA_FILE = Path("/fake/data/stories.txt")
 SAMPLE_CHECKPOINT_PATH = Path("/fake/checkpoints/run_01")
@@ -32,13 +30,14 @@ SAMPLE_MODEL_CONFIG = ModelConfig(
 
 
 def _make_mock_model() -> MagicMock:
-    return MagicMock(spec=NanoLLM)
+    mock = MagicMock(spec=NanoLLM)
+    mock.config = SAMPLE_MODEL_CONFIG
+    return mock
 
 
-def _default_run_kwargs() -> dict[str, object]:
+def _default_run_kwargs(model: MagicMock | None = None) -> dict[str, object]:
     return dict(
-        model=_make_mock_model(),
-        model_config=SAMPLE_MODEL_CONFIG,
+        model=model or _make_mock_model(),
         tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
         data_source=SAMPLE_DATA_FILE,
         training_config=SAMPLE_TRAINING_CONFIG,
@@ -46,169 +45,175 @@ def _default_run_kwargs() -> dict[str, object]:
     )
 
 
-class TestPrepareDataloader:
-    """Test suite for prepare_dataloader()"""
+class TestRun:
+    """Test suite for run()"""
 
-    def test_returns_dataloader_and_batches_per_epoch(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        fake_dl = MagicMock()
-        with patch("src.training.runner.load_text_from_file") as mock_load, \
-             patch("src.training.runner.preprocess_data") as mock_preprocess:
-            mock_load.return_value = ["story1", "story2"]
-            mock_preprocess.return_value = (fake_dl, 7)
-
-            with caplog.at_level(logging.INFO, logger="src.training.runner"):
-                result = prepare_dataloader(
-                    SAMPLE_MODEL_CONFIG, SAMPLE_TOKENIZER_CONFIG,
-                    SAMPLE_DATA_FILE, SAMPLE_TRAINING_CONFIG,
-                )
-
-            assert result == (fake_dl, 7)
-            assert "Loading data" in caplog.text
-            assert "Data processing complete" in caplog.text
+    def test_raises_on_empty_dataset(self) -> None:
+        with patch("src.training.runner.load_text_from_file") as mock_load:
+            mock_load.return_value = []
+            with pytest.raises(ValueError, match="Dataset is empty"):
+                run(**_default_run_kwargs())
 
     def test_calls_load_text_with_correct_args(self) -> None:
         with patch("src.training.runner.load_text_from_file") as mock_load, \
-             patch("src.training.runner.preprocess_data") as mock_preprocess:
-            mock_load.return_value = []
-            mock_preprocess.return_value = (MagicMock(), 0)
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
+             patch("src.training.runner.Trainer") as mock_trainer_cls:
+            mock_load.return_value = ["story1", "story2"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
+            mock_trainer_cls.return_value = MagicMock()
 
-            prepare_dataloader(
-                SAMPLE_MODEL_CONFIG, SAMPLE_TOKENIZER_CONFIG,
-                SAMPLE_DATA_FILE, SAMPLE_TRAINING_CONFIG,
-            )
+            run(**_default_run_kwargs())
 
             mock_load.assert_called_once_with(
-                SAMPLE_DATA_FILE,
+                file_path=SAMPLE_DATA_FILE,
                 delimiter=SAMPLE_TOKENIZER_CONFIG.delimiter,
                 max_paragraphs=SAMPLE_TRAINING_CONFIG.max_stories,
             )
 
     def test_calls_preprocess_with_correct_args(self) -> None:
         fake_stories = ["a", "b", "c"]
+        mock_model = _make_mock_model()
         with patch("src.training.runner.load_text_from_file") as mock_load, \
-             patch("src.training.runner.preprocess_data") as mock_preprocess:
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
+             patch("src.training.runner.Trainer") as mock_trainer_cls:
             mock_load.return_value = fake_stories
-            mock_preprocess.return_value = (MagicMock(), 3)
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
+            mock_trainer_cls.return_value = MagicMock()
 
-            prepare_dataloader(
-                SAMPLE_MODEL_CONFIG, SAMPLE_TOKENIZER_CONFIG,
-                SAMPLE_DATA_FILE, SAMPLE_TRAINING_CONFIG,
-            )
+            run(**_default_run_kwargs(model=mock_model))
 
             mock_preprocess.assert_called_once_with(
-                fake_stories,
-                batch_size=SAMPLE_TRAINING_CONFIG.batch_size,
-                maxlen=SAMPLE_MODEL_CONFIG.maxlen,
+                text_blocks=fake_stories,
+                model_config=mock_model.config,
                 tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
-                shuffle=SAMPLE_TRAINING_CONFIG.shuffle,
-                seed=SAMPLE_TRAINING_CONFIG.seed,
+                training_config=SAMPLE_TRAINING_CONFIG,
             )
 
-
-class TestExecuteTrainingRun:
-    """Test suite for execute_training_run()"""
-
     def test_calls_trainer_train_once(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_instance = MagicMock()
             mock_trainer_cls.return_value = mock_instance
 
-            execute_training_run(**_default_run_kwargs())
+            run(**_default_run_kwargs())
 
             mock_instance.train.assert_called_once()
 
     def test_passes_checkpoint_source_to_trainer(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_trainer_cls.return_value = MagicMock()
 
-            execute_training_run(
-                **_default_run_kwargs(), checkpoint_source=SAMPLE_CHECKPOINT_SOURCE
-            )
+            run(**_default_run_kwargs(), checkpoint_source=SAMPLE_CHECKPOINT_SOURCE)
 
             _, kwargs = mock_trainer_cls.call_args
             assert kwargs["checkpoint_source"] == SAMPLE_CHECKPOINT_SOURCE
 
     def test_uses_default_none_checkpoint_source(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_trainer_cls.return_value = MagicMock()
 
-            execute_training_run(**_default_run_kwargs())
+            run(**_default_run_kwargs())
 
             _, kwargs = mock_trainer_cls.call_args
             assert kwargs["checkpoint_source"] is None
 
     def test_passes_previous_epochs_completed_to_trainer(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_trainer_cls.return_value = MagicMock()
 
-            execute_training_run(**_default_run_kwargs(), previous_epochs_completed=5)
+            run(**_default_run_kwargs(), previous_epochs_completed=5)
 
             _, kwargs = mock_trainer_cls.call_args
             assert kwargs["previous_epochs_completed"] == 5
 
     def test_propagates_data_file_not_found(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
-             patch("src.training.runner.Trainer"):
-            mock_prepare.side_effect = FileNotFoundError("missing file")
-
+        with patch("src.training.runner.load_text_from_file") as mock_load:
+            mock_load.side_effect = FileNotFoundError("missing file")
             with pytest.raises(FileNotFoundError):
-                execute_training_run(**_default_run_kwargs())
-
-    def test_propagates_data_value_error(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
-             patch("src.training.runner.Trainer"):
-            mock_prepare.side_effect = ValueError("bad data")
-
-            with pytest.raises(ValueError):
-                execute_training_run(**_default_run_kwargs())
+                run(**_default_run_kwargs())
 
     def test_propagates_data_os_error(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
-             patch("src.training.runner.Trainer"):
-            mock_prepare.side_effect = OSError("disk error")
-
+        with patch("src.training.runner.load_text_from_file") as mock_load:
+            mock_load.side_effect = OSError("disk error")
             with pytest.raises(OSError):
-                execute_training_run(**_default_run_kwargs())
+                run(**_default_run_kwargs())
+
+    def test_propagates_calculate_batches_error(self) -> None:
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc:
+            mock_load.return_value = ["story1"]
+            mock_calc.side_effect = ValueError("bad batch size")
+            with pytest.raises(ValueError):
+                run(**_default_run_kwargs())
 
     def test_propagates_training_value_error(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_instance = MagicMock()
             mock_instance.train.side_effect = ValueError("training failed")
             mock_trainer_cls.return_value = mock_instance
 
             with pytest.raises(ValueError):
-                execute_training_run(**_default_run_kwargs())
+                run(**_default_run_kwargs())
 
     def test_propagates_training_runtime_error(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_instance = MagicMock()
             mock_instance.train.side_effect = RuntimeError("runtime failure")
             mock_trainer_cls.return_value = mock_instance
 
             with pytest.raises(RuntimeError):
-                execute_training_run(**_default_run_kwargs())
+                run(**_default_run_kwargs())
 
     def test_propagates_training_os_error(self) -> None:
-        with patch("src.training.runner.prepare_dataloader") as mock_prepare, \
+        with patch("src.training.runner.load_text_from_file") as mock_load, \
+             patch("src.training.runner.calculate_batches") as mock_calc, \
+             patch("src.training.runner.preprocess_data") as mock_preprocess, \
              patch("src.training.runner.Trainer") as mock_trainer_cls:
-            mock_prepare.return_value = (MagicMock(), 4)
+            mock_load.return_value = ["story1"]
+            mock_calc.return_value = 4
+            mock_preprocess.return_value = MagicMock()
             mock_instance = MagicMock()
             mock_instance.train.side_effect = OSError("disk full")
             mock_trainer_cls.return_value = mock_instance
 
             with pytest.raises(OSError):
-                execute_training_run(**_default_run_kwargs())
+                run(**_default_run_kwargs())

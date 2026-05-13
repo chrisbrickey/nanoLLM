@@ -101,7 +101,7 @@ class TestResumeCliSourceCheckpointResolution:
                  patch("scripts.resume.load_metadata") as mock_meta, \
                  patch("scripts.resume.get_latest_checkpoint", return_value=latest), \
                  patch("scripts.resume.count_params", return_value=0), \
-                 patch("scripts.resume.execute_training_run") as mock_execute:
+                 patch("scripts.resume.run") as mock_execute:
                 mock_build.return_value = (MagicMock(), MagicMock(), MagicMock())
                 mock_meta.return_value = MagicMock(cumulative_epochs_completed=3)
                 mock_execute.return_value = None
