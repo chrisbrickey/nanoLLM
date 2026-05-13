@@ -16,7 +16,7 @@ Usage:
 
     # resume training with example overrides
     uv run nanollm-resume --epochs 5
-    uv run nanollm-resume --source-checkpoint path/to/bundle --destination-checkpoint path/to/new
+    uv run nanollm-resume --checkpoint-source path/to/bundle --checkpoint-destination path/to/new
 """
 
 import argparse
@@ -49,7 +49,7 @@ def _parse_args() -> argparse.Namespace:
 
     # Add arguments that are unique to this script
     parser.add_argument(
-        "--source-checkpoint",
+        "--checkpoint-source",
         type=str,
         default=None,
         help=("Path to checkpoint bundle from which to load pre-trained weights. If not specified, the most recent checkpoint is loaded."),
@@ -76,8 +76,8 @@ def main() -> None:
 
     try:
         # Resolve checkpoint source bundle (defaults to most recent)
-        if args.source_checkpoint:
-            source_path: Path | None = Path(args.source_checkpoint)
+        if args.checkpoint_source:
+            source_path: Path | None = Path(args.checkpoint_source)
         else:
             source_path = get_latest_checkpoint(CHECKPOINTS_DIR)
             if source_path is None:

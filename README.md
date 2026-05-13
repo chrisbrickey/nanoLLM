@@ -100,7 +100,7 @@ Use this script the first time you train the model or at the beginning of an exp
 uv run nanollm-train
 
 # fresh training with example overrides
-uv run nanollm-train --epochs 5 --batch-size 64 --destination-checkpoint path/to/new
+uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint-destination path/to/new
 ```
 
 #### Resume training
@@ -111,7 +111,7 @@ Use this script for subsequent training sessions. If not specified, it uses a ut
 uv run nanollm-resume
 
 # resume training with example overrides
-uv run nanollm-resume --epochs 5 --source-checkpoint {checkpoint_directory}/{prior_run_name}/ 
+uv run nanollm-resume --epochs 5 --checkpoint-source {checkpoint_directory}/{prior_run_name}/ 
 ```
 
 #### Optional Flags
@@ -120,12 +120,12 @@ uv run nanollm-resume --epochs 5 --source-checkpoint {checkpoint_directory}/{pri
 |------|--------------|-------------|---------|
 | `--epochs` | both scripts | Number of epochs to run **in this invocation** (not cumulative) | `3` |
 | `--batch-size` | both scripts | Number of samples per training batch | `32` |
+| `--data-file` | both scripts | Path to the training data file | `data/TinyStories-1000.txt` |
 | `--max-stories` | both scripts | Maximum number of stories to load from the data file | `100` |
 | `--seed` | both scripts | Random seed for reproducibility | `42` |
 | `--shuffle` / `--no-shuffle` | both scripts | Enable or disable dataset shuffling | `False` |
-| `--data-file` | both scripts | Path to the training data file | `data/TinyStories-1000.txt` |
-| `--destination-checkpoint` | both scripts | Path to save the new checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
-| `--source-checkpoint` | resume only  | Path to the checkpoint bundle to load weights from | latest bundle in `checkpoints/` |
+| `--checkpoint-destination` | both scripts | Path to save the new checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
+| `--checkpoint-source` | resume only  | Path to the checkpoint bundle to load weights from | latest bundle in `checkpoints/` |
 
 
 ## Debugging Tools

@@ -16,7 +16,7 @@ Usage:
     uv run nanollm-train
 
     # fresh training with example overrides
-    uv run nanollm-train --epochs 5 --batch-size 64 --destination-checkpoint my_run.orbax
+    uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint-destination my_run.orbax
 """
 
 import argparse

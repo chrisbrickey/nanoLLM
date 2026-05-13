@@ -33,7 +33,7 @@ class TestAddSharedArgs:
         assert args.seed is None
         assert args.shuffle is None
         assert args.data_file is None
-        assert args.destination_checkpoint is None
+        assert args.checkpoint_destination is None
 
     def test_all_flags_parsed(self) -> None:
         argv = [
@@ -43,7 +43,7 @@ class TestAddSharedArgs:
             "--seed", "123",
             "--shuffle",
             "--data-file", "data/sample.txt",
-            "--destination-checkpoint", "checkpoints/run_x",
+            "--checkpoint-destination", "checkpoints/run_x",
         ]
         args = _parser_with_shared_args().parse_args(argv)
         assert args.batch_size == 8
@@ -52,7 +52,7 @@ class TestAddSharedArgs:
         assert args.seed == 123
         assert args.shuffle is True
         assert args.data_file == "data/sample.txt"
-        assert args.destination_checkpoint == "checkpoints/run_x"
+        assert args.checkpoint_destination == "checkpoints/run_x"
 
     def test_no_shuffle_flag_sets_false(self) -> None:
         args = _parser_with_shared_args().parse_args(["--no-shuffle"])
@@ -117,6 +117,6 @@ class TestResolveDestinationCheckpoint:
 
     def test_returns_supplied_path(self) -> None:
         args = _parser_with_shared_args().parse_args(
-            ["--destination-checkpoint", "checkpoints/my_run"]
+            ["--checkpoint-destination", "checkpoints/my_run"]
         )
         assert resolve_destination_checkpoint(args) == Path("checkpoints/my_run")
