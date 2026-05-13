@@ -37,7 +37,7 @@ def add_shared_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--no-shuffle", dest="shuffle", action="store_false")
     parser.set_defaults(shuffle=None)
     parser.add_argument(
-        "--destination-checkpoint",
+        "--checkpoint-destination",
         type=str,
         default=None,
         help="Path to save checkpoint bundle directory (default: checkpoints/NanoLLM_{timestamp}/)",
@@ -60,7 +60,7 @@ def resolve_data_file(args: argparse.Namespace) -> Path:
 
 def resolve_destination_checkpoint(args: argparse.Namespace) -> Path:
     return (
-        Path(args.destination_checkpoint)
-        if args.destination_checkpoint
+        Path(args.checkpoint_destination)
+        if args.checkpoint_destination
         else default_checkpoint_path(NanoLLM.__name__)
     )

@@ -62,7 +62,7 @@ class TestResumeCliHappyPath:
             "--max-stories", "6",
             "--epochs", str(epochs_per_phase),
             "--batch-size", "2",
-            "--destination-checkpoint", str(first_path),
+            "--checkpoint-destination", str(first_path),
         ]
         with patch("sys.argv", train_argv):
             train_main()
@@ -70,12 +70,12 @@ class TestResumeCliHappyPath:
 
         resume_argv = [
             "nanollm-resume",
-            "--source-checkpoint", str(first_path),
+            "--checkpoint-source", str(first_path),
             "--data-file", str(data_file),
             "--max-stories", "6",
             "--epochs", str(epochs_per_phase),
             "--batch-size", "2",
-            "--destination-checkpoint", str(second_path),
+            "--checkpoint-destination", str(second_path),
         ]
         with patch("sys.argv", resume_argv):
             resume_main()
@@ -88,7 +88,7 @@ class TestResumeCliHappyPath:
 
 
 class TestResumeCliSourceCheckpointResolution:
-    """Verifies that --source-checkpoint and its fallback (get_latest_checkpoint)
+    """Verifies that --checkpoint-source and its fallback (get_latest_checkpoint)
     flow correctly into build_model_from_checkpoint. Trainer execution is
     patched so these tests stay fast and don't write real bundles."""
 
@@ -117,7 +117,7 @@ class TestResumeCliSourceCheckpointResolution:
         explicit_source = CHECKPOINTS_DIR / "explicit_source.orbax"
         argv = [
             "nanollm-resume",
-            "--source-checkpoint", str(explicit_source),
+            "--checkpoint-source", str(explicit_source),
             "--data-file", str(data_file),
             "--epochs", "1",
             "--batch-size", "2",
@@ -148,7 +148,7 @@ class TestResumeCliErrors:
     def test_no_source_and_no_checkpoints_exits_1(
         self, caplog: pytest.LogCaptureFixture, data_file: Path
     ) -> None:
-        """When --source-checkpoint is omitted and no bundles exist, the CLI
+        """When --checkpoint-source is omitted and no bundles exist, the CLI
         must exit 1 and log a clear error mentioning that no checkpoints were found."""
         argv = [
             "nanollm-resume",
@@ -167,11 +167,11 @@ class TestResumeCliErrors:
     def test_nonexistent_source_checkpoint_exits_1(
         self, caplog: pytest.LogCaptureFixture, data_file: Path
     ) -> None:
-        """If --source-checkpoint points at a missing bundle, the CLI must exit 1."""
+        """If --checkpoint-source points at a missing bundle, the CLI must exit 1."""
         missing = CHECKPOINTS_DIR / "nonexistent_bundle"
         argv = [
             "nanollm-resume",
-            "--source-checkpoint", str(missing),
+            "--checkpoint-source", str(missing),
             "--data-file", str(data_file),
             "--epochs", "1",
             "--batch-size", "2",
