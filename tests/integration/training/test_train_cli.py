@@ -114,7 +114,7 @@ class TestCliArguments:
         self, run_cli, checkpoint_path: Path
     ) -> None:
         kwargs = run_cli("--checkpoint-destination", str(checkpoint_path))
-        assert kwargs["checkpoint_path"] == checkpoint_path
+        assert kwargs["checkpoint_destination"] == checkpoint_path
 
     def test_default_checkpoint_path(self, run_cli) -> None:
         fixed_dt = datetime(2026, 1, 15, 10, 30, 45)
@@ -122,7 +122,7 @@ class TestCliArguments:
             mock_dt.now.return_value = fixed_dt
             kwargs = run_cli()
         expected = CHECKPOINTS_DIR / "NanoLLM_20260115_103045"
-        assert kwargs["checkpoint_path"] == expected
+        assert kwargs["checkpoint_destination"] == expected
 
 
 class TestCliErrorHandling:

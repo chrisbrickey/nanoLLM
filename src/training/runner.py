@@ -82,7 +82,7 @@ def run(
         batches_per_epoch=batches_per_epoch,
         training_config=training_config,
         tokenizer_config=tokenizer_config,
-        checkpoint_path=checkpoint_destination,
+        checkpoint_destination=checkpoint_destination,
         checkpoint_source=checkpoint_source,
         previous_epochs_completed=previous_epochs_completed,
     )
