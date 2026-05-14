@@ -92,6 +92,7 @@ class TestTrainerInit:
             dataloader=_make_dataloader(),
             batches_per_epoch=N_BATCHES,
             data_source=SAMPLE_DATA_SOURCE,
+            checkpoint_destination=None,  # disabling checkpoint persistence because this is a unit test
             previous_epochs_completed=0,
         )
         assert isinstance(trainer.optimizer, nnx.ModelAndOptimizer)
@@ -100,34 +101,36 @@ class TestTrainerInit:
 
 
 class TestTrainerTrain:
-    def test_logs_progress_and_loss(
+    # To maintain the unit-nature of these tests,
+    # we disable checkpoint persistence by passing None for checkpoint_destination.
+
+    def test_train_populates_metrics_history_and_logs_progress(
             self, make_tiny_model: Callable[..., NanoLLM], caplog: pytest.LogCaptureFixture
     ) -> None:
         config = _make_config()
         previous_epochs_completed = 0
-        trainer = _build_trainer(make_tiny_model(), training_config=config, previous_epochs_completed=previous_epochs_completed)
+        trainer = _build_trainer(
+            make_tiny_model(),
+            training_config=config,
+            checkpoint_destination=None,
+            previous_epochs_completed=previous_epochs_completed)
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
-            trainer.train()
+            history = trainer.train()
 
+        # Assert metrics history is returned as expected
+        assert history["train_loss"] == [STUB_LOSS] * (N_BATCHES // config.log_every_n_steps)
+
+        # Assert progress is logged as expected
         assert "Epoch 1 commenced" in caplog.text
         assert f"All {EPOCH_COUNT} epochs completed" in caplog.text
         assert f"in addition to {previous_epochs_completed} epochs accumulated during previous trainings" in caplog.text
         assert "Loss=" in caplog.text
 
-    def test_returns_populated_metrics_history(
-        self, make_tiny_model: Callable[..., NanoLLM]
-    ) -> None:
-        trainer = _build_trainer(make_tiny_model(), previous_epochs_completed=0)
-        history = trainer.train()
-
-        assert "train_loss" in history
-        assert len(history["train_loss"]) > 0
-
     def test_log_every_n_steps_controls_history_length(
         self, make_tiny_model: Callable[..., NanoLLM], caplog: pytest.LogCaptureFixture
     ) -> None:
         config = _make_config(log_every_n_steps=2)
-        trainer = _build_trainer(make_tiny_model(), training_config=config, previous_epochs_completed=0)
+        trainer = _build_trainer(make_tiny_model(), training_config=config, checkpoint_destination=None, previous_epochs_completed=0)
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
             history = trainer.train()
         # 4 batches / log every 2 steps = 2 entries
@@ -143,6 +146,7 @@ class TestTrainerTrain:
             dataloader=_FakeDataLoader(n_batches=0, maxlen=MAXLEN, batch_size=BATCH_SIZE),
             batches_per_epoch=10,  # enough for a valid schedule; dataloader yields nothing
             data_source=SAMPLE_DATA_SOURCE,
+            checkpoint_destination=None,
             previous_epochs_completed=0,
         )
         trainer.train_step = _stub_train_step  # type: ignore[assignment]
@@ -154,7 +158,7 @@ class TestTrainerTrain:
     def test_checkpoint_path_none_skips_save(
         self, make_tiny_model: Callable[..., NanoLLM]
     ) -> None:
-        trainer = _build_trainer(make_tiny_model(), checkpoint_path=None, previous_epochs_completed=0)
+        trainer = _build_trainer(make_tiny_model(), checkpoint_destination=None, previous_epochs_completed=0)
         with patch("src.training.trainer.save_checkpoint") as mock_save:
             trainer.train()
             mock_save.assert_not_called()
@@ -163,7 +167,7 @@ class TestTrainerTrain:
         self, make_tiny_model: Callable[..., NanoLLM], tmp_path: Path
     ) -> None:
         target = tmp_path / "ckpt_bundle"
-        trainer = _build_trainer(make_tiny_model(), checkpoint_path=target, previous_epochs_completed=0)
+        trainer = _build_trainer(make_tiny_model(), checkpoint_destination=target, previous_epochs_completed=0)
         with patch("src.training.trainer.save_checkpoint") as mock_save:
             trainer.train()
             mock_save.assert_called_once()
@@ -179,7 +183,7 @@ class TestTrainerTokenizerConfig:
         passed to save_checkpoint contains the matching dict."""
         trainer = _build_trainer(
             make_tiny_model(),
-            checkpoint_path=tmp_path / "bundle",
+            checkpoint_destination=tmp_path / "bundle",
             tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
             previous_epochs_completed=0,
         )
@@ -194,7 +198,7 @@ class TestTrainerTokenizerConfig:
         """Omitting tokenizer_config is backward-compatible — train() must
         still call save_checkpoint, with metadata.tokenizer_config = None."""
         trainer = _build_trainer(
-            make_tiny_model(), checkpoint_path=tmp_path / "bundle", previous_epochs_completed=0
+            make_tiny_model(), checkpoint_destination=tmp_path / "bundle", previous_epochs_completed=0
         )
         with patch("src.training.trainer.save_checkpoint") as mock_save:
             trainer.train()
@@ -216,7 +220,7 @@ class TestTrainerTotalEpochsMetadata:
         trainer = _build_trainer(
             make_tiny_model(),
             training_config=config,
-            checkpoint_path=tmp_path / "bundle",
+            checkpoint_destination=tmp_path / "bundle",
             previous_epochs_completed=previous_epochs_completed,
         )
 
@@ -234,7 +238,7 @@ class TestTrainerTotalEpochsMetadata:
         trainer = _build_trainer(
             make_tiny_model(),
             training_config=config,
-            checkpoint_path=tmp_path / "bundle",
+            checkpoint_destination=tmp_path / "bundle",
             previous_epochs_completed=previous_epochs_completed,
         )
         with patch("src.training.trainer.save_checkpoint") as mock_save:

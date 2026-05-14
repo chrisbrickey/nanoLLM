@@ -1,10 +1,7 @@
 """
 nanoLLM/src/training/cli.py
 
-Argparse plumbing shared by scripts.
-
-This module is CLI-specific because every function takes
-(or produces) an argparse.Namespace.
+CLI-specific training utilities shared by scripts.
 """
 
 import argparse
@@ -59,8 +56,20 @@ def resolve_data_file(args: argparse.Namespace) -> Path:
 
 
 def resolve_destination_checkpoint(args: argparse.Namespace) -> Path:
-    return (
+    result = (
         Path(args.checkpoint_destination)
         if args.checkpoint_destination
         else default_checkpoint_path(NanoLLM.__name__)
     )
+
+    # For CLI scripts, we require checkpoint destination path to be provided to avoid running
+    # an expensive training without documentation and without capability to resume training later.
+    # It is possible to run the Trainer without persisting a checkpoint and that is important
+    # to maintain for some scenarios. But it should be a rare use case.
+    if result is None:
+        raise ValueError(
+            "Checkpoint_destination path could not be resolved. "
+            "Without this information, no checkpoint would not be persisted following the training run."
+        )
+
+    return result
