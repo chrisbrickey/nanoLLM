@@ -3,18 +3,15 @@ so each test exercises the orchestration loop only (no JIT compile, no real
 gradient computation, no disk I/O). Real-training behavior and disk side
 effects are covered by tests/integration/training/."""
 
-import dataclasses
 import logging
 from collections.abc import Callable, Iterator
-from pathlib import Path
-from unittest.mock import patch
 
 import jax.numpy as jnp
 import numpy as np
 import flax.nnx as nnx
 import pytest
 
-from src.config import TrainingConfig, TokenizerConfig
+from src.config import TrainingConfig
 from src.model.model import NanoLLM
 from src.training.trainer import Trainer
 
@@ -23,13 +20,6 @@ BATCH_SIZE = 2
 N_BATCHES = 4  # yields 2 log entries with default log_every_n_steps=2
 MAXLEN = 4  # matches conftest.TINY_MAXLEN
 STUB_LOSS = 0.5
-SAMPLE_DATA_SOURCE = Path("/fake/data/stories.txt")
-
-SAMPLE_TOKENIZER_CONFIG = TokenizerConfig(
-    delimiter="<|endoftext|>",
-    name="gpt2",
-    pad_token_id=0,
-)
 
 
 class _FakeDataLoader:
@@ -51,8 +41,8 @@ def _make_config(**overrides: object) -> TrainingConfig:
     return TrainingConfig(**defaults)  # type: ignore[arg-type]
 
 
-def _make_dataloader() -> _FakeDataLoader:
-    return _FakeDataLoader(n_batches=N_BATCHES, maxlen=MAXLEN, batch_size=BATCH_SIZE)
+def _make_dataloader(n_batches: int = N_BATCHES) -> _FakeDataLoader:
+    return _FakeDataLoader(n_batches=n_batches, maxlen=MAXLEN, batch_size=BATCH_SIZE)
 
 
 def _stub_train_step(
@@ -68,15 +58,13 @@ def _stub_train_step(
 
 
 def _build_trainer(
-    model: NanoLLM, *, training_config: TrainingConfig | None = None, **kwargs: object
+    model: NanoLLM, *, training_config: TrainingConfig | None = None, dataloader: _FakeDataLoader | None = None
 ) -> Trainer:
     trainer = Trainer(
         model=model,
         training_config=training_config or _make_config(),
-        dataloader=_make_dataloader(),
+        dataloader=dataloader or _make_dataloader(),
         batches_per_epoch=N_BATCHES,
-        data_source=SAMPLE_DATA_SOURCE,
-        **kwargs,  # type: ignore[arg-type]
     )
     trainer.train_step = _stub_train_step  # type: ignore[assignment]
     return trainer
@@ -91,9 +79,6 @@ class TestTrainerInit:
             training_config=_make_config(),
             dataloader=_make_dataloader(),
             batches_per_epoch=N_BATCHES,
-            data_source=SAMPLE_DATA_SOURCE,
-            checkpoint_destination=None,  # disabling checkpoint persistence because this is a unit test
-            previous_epochs_completed=0,
         )
         assert isinstance(trainer.optimizer, nnx.ModelAndOptimizer)
         assert isinstance(trainer.metrics, nnx.MultiMetric)
@@ -101,19 +86,11 @@ class TestTrainerInit:
 
 
 class TestTrainerTrain:
-    # To maintain the unit-nature of these tests,
-    # we disable checkpoint persistence by passing None for checkpoint_destination.
-
     def test_train_populates_metrics_history_and_logs_progress(
-            self, make_tiny_model: Callable[..., NanoLLM], caplog: pytest.LogCaptureFixture
+        self, make_tiny_model: Callable[..., NanoLLM], caplog: pytest.LogCaptureFixture
     ) -> None:
         config = _make_config()
-        previous_epochs_completed = 0
-        trainer = _build_trainer(
-            make_tiny_model(),
-            training_config=config,
-            checkpoint_destination=None,
-            previous_epochs_completed=previous_epochs_completed)
+        trainer = _build_trainer(make_tiny_model(), training_config=config)
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
             history = trainer.train()
 
@@ -123,14 +100,13 @@ class TestTrainerTrain:
         # Assert progress is logged as expected
         assert "Epoch 1 commenced" in caplog.text
         assert f"All {EPOCH_COUNT} epochs completed" in caplog.text
-        assert f"in addition to {previous_epochs_completed} epochs accumulated during previous trainings" in caplog.text
         assert "Loss=" in caplog.text
 
     def test_log_every_n_steps_controls_history_length(
         self, make_tiny_model: Callable[..., NanoLLM], caplog: pytest.LogCaptureFixture
     ) -> None:
         config = _make_config(log_every_n_steps=2)
-        trainer = _build_trainer(make_tiny_model(), training_config=config, checkpoint_destination=None, previous_epochs_completed=0)
+        trainer = _build_trainer(make_tiny_model(), training_config=config)
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
             history = trainer.train()
         # 4 batches / log every 2 steps = 2 entries
@@ -145,103 +121,9 @@ class TestTrainerTrain:
             training_config=_make_config(),
             dataloader=_FakeDataLoader(n_batches=0, maxlen=MAXLEN, batch_size=BATCH_SIZE),
             batches_per_epoch=10,  # enough for a valid schedule; dataloader yields nothing
-            data_source=SAMPLE_DATA_SOURCE,
-            checkpoint_destination=None,
-            previous_epochs_completed=0,
         )
         trainer.train_step = _stub_train_step  # type: ignore[assignment]
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
             history = trainer.train()
         assert history == {"train_loss": []}
         assert "loss=" not in caplog.text
-
-    def test_checkpoint_path_none_skips_save(
-        self, make_tiny_model: Callable[..., NanoLLM]
-    ) -> None:
-        trainer = _build_trainer(make_tiny_model(), checkpoint_destination=None, previous_epochs_completed=0)
-        with patch("src.training.trainer.save_checkpoint") as mock_save:
-            trainer.train()
-            mock_save.assert_not_called()
-
-    def test_checkpoint_path_set_invokes_save_with_path(
-        self, make_tiny_model: Callable[..., NanoLLM], tmp_path: Path
-    ) -> None:
-        target = tmp_path / "ckpt_bundle"
-        trainer = _build_trainer(make_tiny_model(), checkpoint_destination=target, previous_epochs_completed=0)
-        with patch("src.training.trainer.save_checkpoint") as mock_save:
-            trainer.train()
-            mock_save.assert_called_once()
-            args, kwargs = mock_save.call_args
-            assert args[1] == target
-
-
-class TestTrainerTokenizerConfig:
-    def test_metadata_includes_tokenizer_config_when_provided(
-        self, make_tiny_model: Callable[..., NanoLLM], tmp_path: Path
-    ) -> None:
-        """When Trainer is given a tokenizer_config, the CheckpointMetadata
-        passed to save_checkpoint contains the matching dict."""
-        trainer = _build_trainer(
-            make_tiny_model(),
-            checkpoint_destination=tmp_path / "bundle",
-            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
-            previous_epochs_completed=0,
-        )
-        with patch("src.training.trainer.save_checkpoint") as mock_save:
-            trainer.train()
-            metadata = mock_save.call_args.kwargs["metadata"]
-            assert metadata.tokenizer_config == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
-
-    def test_metadata_tokenizer_config_is_none_when_omitted(
-        self, make_tiny_model: Callable[..., NanoLLM], tmp_path: Path
-    ) -> None:
-        """Omitting tokenizer_config is backward-compatible — train() must
-        still call save_checkpoint, with metadata.tokenizer_config = None."""
-        trainer = _build_trainer(
-            make_tiny_model(), checkpoint_destination=tmp_path / "bundle", previous_epochs_completed=0
-        )
-        with patch("src.training.trainer.save_checkpoint") as mock_save:
-            trainer.train()
-            metadata = mock_save.call_args.kwargs["metadata"]
-            assert metadata.tokenizer_config is None
-
-
-class TestTrainerTotalEpochsMetadata:
-    def test_metadata_total_epochs_accumulates_prior(
-        self, make_tiny_model: Callable[..., NanoLLM], tmp_path: Path
-    ) -> None:
-        """To accurately reflect cumulative training history, checkpoint
-        metadata must record cumulative_epochs_completed as the sum of epochs
-        from previous training (loaded checkpoint) and epochs from this
-        current round of training (specified on training_config)."""
-
-        previous_epochs_completed, current_epochs = 5, 3
-        config = _make_config(epochs=current_epochs)
-        trainer = _build_trainer(
-            make_tiny_model(),
-            training_config=config,
-            checkpoint_destination=tmp_path / "bundle",
-            previous_epochs_completed=previous_epochs_completed,
-        )
-
-        with patch("src.training.trainer.save_checkpoint") as mock_save:
-            trainer.train()
-            metadata = mock_save.call_args.kwargs["metadata"]
-            assert metadata.cumulative_epochs_completed == (previous_epochs_completed + current_epochs)
-
-    def test_metadata_total_epochs_with_zero_prior(
-        self, make_tiny_model: Callable[..., NanoLLM], tmp_path: Path
-    ) -> None:
-
-        previous_epochs_completed, current_epochs = 0, 3
-        config = _make_config(epochs=current_epochs)
-        trainer = _build_trainer(
-            make_tiny_model(),
-            training_config=config,
-            checkpoint_destination=tmp_path / "bundle",
-            previous_epochs_completed=previous_epochs_completed,
-        )
-        with patch("src.training.trainer.save_checkpoint") as mock_save:
-            trainer.train()
-            metadata = mock_save.call_args.kwargs["metadata"]
-            assert metadata.cumulative_epochs_completed == (previous_epochs_completed + current_epochs)

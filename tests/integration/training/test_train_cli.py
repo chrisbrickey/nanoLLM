@@ -38,7 +38,8 @@ def checkpoint_path() -> Generator[Path, None, None]:
 
 @pytest.fixture
 def run_cli(data_file: Path):
-    """Factory fixture: runs main() with patched internals and returns Trainer init kwargs."""
+    """Factory fixture: runs main() with runner.run patched out and returns the kwargs
+    that the CLI assembled for it (training_config, checkpoint_destination, etc.)."""
 
     def _run(*extra_args: str) -> dict:
         base_argv = [
@@ -49,17 +50,11 @@ def run_cli(data_file: Path):
         ]
         argv = base_argv + list(extra_args)
 
-        with patch("src.training.runner.calculate_batches") as mock_calc, \
-             patch("src.training.runner.preprocess_data") as mock_preprocess, \
-             patch("src.training.runner.Trainer") as MockTrainer:
-            mock_calc.return_value = 10
-            mock_preprocess.return_value = MagicMock()
-            MockTrainer.return_value.train.return_value = {"train_loss": []}
-
+        with patch("scripts.train.run") as mock_run:
+            mock_run.return_value = None
             with patch("sys.argv", argv):
                 main()
-
-            return MockTrainer.call_args.kwargs
+            return mock_run.call_args.kwargs
 
     return _run
 
@@ -158,8 +153,8 @@ class TestCliErrorHandling:
             "--batch-size", "2",
             "--checkpoint-destination", str(checkpoint),
         ]
-        with patch("src.training.runner.Trainer") as MockTrainer:
-            MockTrainer.return_value.train.side_effect = OSError("disk full")
+        with patch("scripts.train.run") as mock_run:
+            mock_run.side_effect = OSError("disk full")
             with patch("sys.argv", argv):
                 with pytest.raises(SystemExit) as exc_info:
                     main()

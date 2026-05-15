@@ -98,12 +98,14 @@ class TestResumeCliSourceCheckpointResolution:
 
         def _run(argv: list[str], *, latest: Path | None = None) -> MagicMock:
             with patch("scripts.resume.build_model_from_checkpoint") as mock_build, \
-                 patch("scripts.resume.load_metadata") as mock_meta, \
+                 patch("scripts.resume.ResumeContext.from_checkpoint") as mock_from_ckpt, \
                  patch("scripts.resume.get_latest_checkpoint", return_value=latest), \
                  patch("scripts.resume.count_params", return_value=0), \
                  patch("scripts.resume.run") as mock_execute:
                 mock_build.return_value = (MagicMock(), MagicMock(), MagicMock())
-                mock_meta.return_value = MagicMock(cumulative_epochs_completed=3)
+                mock_from_ckpt.return_value = MagicMock(
+                    source=MagicMock(), previous_epochs_completed=3
+                )
                 mock_execute.return_value = None
                 with patch("sys.argv", argv):
                     resume_main()

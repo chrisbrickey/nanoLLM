@@ -27,7 +27,6 @@ from pathlib import Path
 from src.checkpoint import (
     build_model_from_checkpoint,
     get_latest_checkpoint,
-    load_metadata,
 )
 from src.logging_setup import setup_logging
 from src.model.model import count_params
@@ -38,6 +37,7 @@ from src.training.cli import (
     resolve_data_file,
     resolve_destination_checkpoint,
 )
+from src.training.resume_context import ResumeContext
 from src.training.runner import run
 
 logger = logging.getLogger(__name__)
@@ -95,11 +95,8 @@ def main() -> None:
         model, model_config, tokenizer_config = build_model_from_checkpoint(source_path)
         logger.info(f"Model ready ({count_params(model)} parameters)")
 
-        # Load previous_epochs_completed
-        metadata = load_metadata(source_path)
-        if metadata is None:
-            raise ValueError(f"Cannot determine cumulative epoch count: metadata missing at '{source_path}'.")
-        previous_epochs_completed = metadata.cumulative_epochs_completed
+        # Pair the source with its cumulative epoch count in one step to avoid divergence
+        resume_ctx = ResumeContext.from_checkpoint(source_path)
     except Exception as e:
         logger.error(f"Failed to retrieve and apply data from checkpoint bundle: {e}")
         sys.exit(1)
@@ -115,8 +112,7 @@ def main() -> None:
             data_source=data_source,
             training_config=training_config,
             checkpoint_destination=checkpoint_destination,
-            checkpoint_source=source_path,
-            previous_epochs_completed=previous_epochs_completed,
+            resume_from=resume_ctx,
         )
     except Exception as e:
         logger.error(f"Training failed: {e}")
