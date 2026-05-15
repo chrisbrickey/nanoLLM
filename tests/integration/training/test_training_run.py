@@ -15,7 +15,7 @@ from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
 from src.training.resume_context import ResumeContext
-from src.training.runner import run
+from src.training.runner import Runner
 from src.training.trainer import Trainer
 
 SAMPLE_DATA_SOURCE = Path("/fake/data/stories.txt")
@@ -90,21 +90,24 @@ def _run_with_patched_data(
     checkpoint_destination: Path | None,
     resume_from: ResumeContext | None = None,
 ) -> None:
-    """Drives runner.run with patched data loading so the test stays
+    """Drives Runner.run with patched data loading so the test stays
     deterministic and avoids tokenizing real text."""
     config = _make_training_config()
     dataloader = _FakeDataLoader(n_batches=N_BATCHES, maxlen=MAXLEN, batch_size=BATCH_SIZE)
-    with patch("src.training.runner.load_text_from_file", return_value=["s1", "s2"]), \
-         patch("src.training.runner.calculate_batches", return_value=N_BATCHES), \
-         patch("src.training.runner.preprocess_data", return_value=dataloader):
-        run(
+    # Provide enough stories to satisfy len(stories) // batch_size >= 1
+    fake_stories = [f"s{i}" for i in range(BATCH_SIZE * N_BATCHES)]
+    processor = patch("src.training.runner.Processor")
+    with patch("src.training.runner.load_text_from_file", return_value=fake_stories), \
+         processor as mock_processor:
+        mock_processor.return_value.process.return_value = dataloader
+        Runner(
             model=model,
             tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
             data_source=SAMPLE_DATA_SOURCE,
             training_config=config,
             checkpoint_destination=checkpoint_destination,
             resume_from=resume_from,
-        )
+        ).run()
 
 
 class TestTrainLoop:

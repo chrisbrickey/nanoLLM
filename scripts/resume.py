@@ -38,7 +38,7 @@ from src.training.cli import (
     resolve_destination_checkpoint,
 )
 from src.training.resume_context import ResumeContext
-from src.training.runner import run
+from src.training.runner import Runner
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ def main() -> None:
 
 
     try:
-        run(
+        runner = Runner(
             model=model,
             tokenizer_config=tokenizer_config,
             data_source=data_source,
@@ -114,6 +114,7 @@ def main() -> None:
             checkpoint_destination=checkpoint_destination,
             resume_from=resume_ctx,
         )
+        runner.run()
     except Exception as e:
         logger.error(f"Training failed: {e}")
         sys.exit(1)
