@@ -20,6 +20,7 @@ import pytest
 
 from src.config import TrainingConfig
 from src.model.model import NanoLLM
+from src.training.schema import MetricsHistory
 from src.training.trainer import Trainer
 
 EPOCH_COUNT = 1
@@ -219,7 +220,7 @@ class TestTrainerTrain:
             history = trainer.train()
 
         # Assert metrics history is returned as expected
-        assert history["train_loss"] == [STUB_LOSS] * (N_BATCHES // config.log_every_n_steps)
+        assert history.train_loss == [STUB_LOSS] * (N_BATCHES // config.log_every_n_steps)
 
         # Assert progress is logged as expected
         assert "Training plan:" in caplog.text
@@ -235,8 +236,32 @@ class TestTrainerTrain:
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
             history = trainer.train()
         # 4 batches / log every 2 steps = 2 entries
-        assert len(history["train_loss"]) == N_BATCHES // config.log_every_n_steps
+        assert len(history.train_loss) == N_BATCHES // config.log_every_n_steps
         assert caplog.text.count("Loss=") == N_BATCHES // config.log_every_n_steps
+
+    def test_partial_final_window_not_logged(
+        self, make_tiny_model: Callable[..., NanoLLM]
+    ) -> None:
+        # 5 batches, log every 3 steps: only the window ending at step index 2
+        # fires; the trailing 2-step window never completes and is not logged.
+        config = _make_config(log_every_n_steps=3)
+        trainer = _build_trainer(
+            make_tiny_model(),
+            training_config=config,
+            dataloader=_make_dataloader(n_batches=5),
+            batches_per_epoch=5,
+        )
+        history = trainer.train()
+        assert len(history.train_loss) == 1
+
+    def test_history_accumulates_across_epochs(
+        self, make_tiny_model: Callable[..., NanoLLM]
+    ) -> None:
+        config = _make_config(epochs=2, log_every_n_steps=2)
+        trainer = _build_trainer(make_tiny_model(), training_config=config)
+        history = trainer.train()
+        # 2 epochs × (4 batches / 2) = 4 entries; history is never reset between epochs
+        assert len(history.train_loss) == 2 * (N_BATCHES // config.log_every_n_steps)
 
     def test_empty_dataloader_returns_empty_history(
         self, make_tiny_model: Callable[..., NanoLLM], caplog: pytest.LogCaptureFixture
@@ -250,7 +275,7 @@ class TestTrainerTrain:
         trainer.train_step = _stub_train_step  # type: ignore[assignment]
         with caplog.at_level(logging.INFO, logger="src.training.trainer"):
             history = trainer.train()
-        assert history == {"train_loss": []}
+        assert history == MetricsHistory()
         assert "loss=" not in caplog.text
 
 
@@ -285,10 +310,24 @@ class TestTrainerRealStep:
             batches_per_epoch=2,
         )
         history = trainer.train()
-        assert len(history["train_loss"]) == 1
-        loss = history["train_loss"][0]
+        assert len(history.train_loss) == 1
+        loss = history.train_loss[0]
         assert jnp.isfinite(jnp.array(loss))
         assert loss > 0.0
+
+    def test_recorded_losses_are_python_floats(
+        self, make_tiny_model: Callable[..., NanoLLM]
+    ) -> None:
+        # JAX scalars must be converted to Python float before storage so that
+        # downstream JSON serialization (checkpoint metadata) does not break.
+        trainer = Trainer(
+            model=make_tiny_model(),
+            training_config=_make_config(log_every_n_steps=1),
+            dataloader=_make_dataloader(n_batches=2),
+            batches_per_epoch=2,
+        )
+        history = trainer.train()
+        assert all(type(v) is float for v in history.train_loss)
 
     def test_frozen_weights_yield_identical_losses_across_steps(
         self, make_tiny_model: Callable[..., NanoLLM]
@@ -312,7 +351,7 @@ class TestTrainerRealStep:
             batches_per_epoch=3,
         )
         history = trainer.train()
-        assert len(history["train_loss"]) == 3
-        first = history["train_loss"][0]
-        for loss in history["train_loss"][1:]:
+        assert len(history.train_loss) == 3
+        first = history.train_loss[0]
+        for loss in history.train_loss[1:]:
             assert jnp.allclose(jnp.array(loss), jnp.array(first), atol=1e-5)

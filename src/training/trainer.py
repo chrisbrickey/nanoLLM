@@ -9,6 +9,7 @@ import optax
 from src.config import TrainingConfig
 from src.loss import cross_entropy_loss
 from src.model.model import NanoLLM
+from src.training.schema import MetricsHistory
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,11 @@ class Trainer:
         self.metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
         self.train_step = self._make_train_step()
 
-    def train(self) -> dict[str, list[float]]:
+    def train(self) -> MetricsHistory:
         """Orchestrates the full training loop.
 
         Returns:
-            Metrics history dict keyed by metric name (e.g. "train_loss"),
-            with values recorded every log_every_n_steps steps
+            MetricsHistory with values recorded every log_every_n_steps steps.
         """
 
         # Slide inputs over by one index so we are always comparing the inputs to the next token (the target)
@@ -62,7 +62,7 @@ class Trainer:
             lambda tokens: jnp.concatenate((tokens[1:], jnp.array([0])))
         )
 
-        metrics_history: dict[str, list[float]] = {"train_loss": []}
+        metrics_history = MetricsHistory()
         current_epochs = self.training_config.epochs
 
         logger.info(
@@ -87,11 +87,11 @@ class Trainer:
 
                 if (step + 1) % self.training_config.log_every_n_steps == 0:
                     for metric, value in self.metrics.compute().items():
-                        metrics_history.setdefault(f"train_{metric}", []).append(float(value))
+                        metrics_history.record(metric, float(value))
                     self.metrics.reset()
 
                     current_learning_rate = self.schedule(step)
-                    loss_val = metrics_history["train_loss"][-1]
+                    loss_val = metrics_history.train_loss[-1]
                     epoch_losses.append(loss_val)
                     logger.info(
                         "Epoch %d/%d: Loss=%.4f, LearningRate=%.2e",

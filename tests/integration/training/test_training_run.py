@@ -14,7 +14,7 @@ import pytest
 from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
-from src.training.resume_context import ResumeContext
+from src.training.schema import ResumeContext
 from src.training.runner import Runner
 from src.training.trainer import Trainer
 
@@ -116,18 +116,17 @@ class TestTrainLoop:
 
     def test_metrics_history_is_populated(self) -> None:
         history = _make_trainer().train()
-        assert "train_loss" in history
-        assert len(history["train_loss"]) > 0
+        assert len(history.train_loss) > 0
 
     def test_all_losses_are_finite_and_positive(self) -> None:
         history = _make_trainer().train()
-        for loss in history["train_loss"]:
+        for loss in history.train_loss:
             assert loss > 0.0
             assert loss < float("inf")
 
     def test_loss_decreases_over_training(self) -> None:
         history = _make_trainer().train()
-        losses = history["train_loss"]
+        losses = history.train_loss
         assert losses[0] > losses[-1], (
             f"Expected loss to decrease: first={losses[0]:.4f}, last={losses[-1]:.4f}"
         )
@@ -149,6 +148,16 @@ class TestRunnerCheckpointOnDisk:
         _run_with_patched_data(_make_model(), checkpoint_destination=project_checkpoint_destination)
         saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
         assert saved["tokenizer_config"] == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
+
+    def test_final_loss_written_to_metadata_json(
+        self, project_checkpoint_destination: Path
+    ) -> None:
+        _run_with_patched_data(_make_model(), checkpoint_destination=project_checkpoint_destination)
+        saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
+        final_loss = saved["final_loss"]
+        assert isinstance(final_loss, float)
+        assert final_loss > 0.0
+        assert final_loss < float("inf")
 
     def test_prior_epochs_written_to_metadata_json(
         self, project_checkpoint_destination: Path

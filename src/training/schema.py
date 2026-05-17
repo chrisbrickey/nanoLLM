@@ -1,15 +1,31 @@
 """
-nanoLLM/src/training/resume_context.py
+nanoLLM/src/training/schema.py
 
-Joins information required for resuming training from a checkpoint
-so that callers cannot pass one element without the other elements,
-which could result in (for example) wrong calculation of total epochs.
+Value objects and data schemas for the training pipeline.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.checkpoint import load_metadata
+
+
+@dataclass
+class MetricsHistory:
+    """Accumulated training metrics recorded at log_every_n_steps intervals."""
+
+    train_loss: list[float] = field(default_factory=list)
+
+    def record(self, metric_name: str, value: float) -> None:
+        """Append *value* to the field for the named metric (e.g. "loss" → train_loss).
+
+        Raises AttributeError for unknown metric names, keeping the schema explicit.
+        """
+        getattr(self, f"train_{metric_name}").append(value)
+
+    @property
+    def final_train_loss(self) -> float | None:
+        return self.train_loss[-1] if self.train_loss else None
 
 
 @dataclass(frozen=True)

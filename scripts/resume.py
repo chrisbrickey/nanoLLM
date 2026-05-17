@@ -37,7 +37,7 @@ from src.training.cli import (
     resolve_data_file,
     resolve_destination_checkpoint,
 )
-from src.training.resume_context import ResumeContext
+from src.training.schema import ResumeContext
 from src.training.runner import Runner
 
 logger = logging.getLogger(__name__)

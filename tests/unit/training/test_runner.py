@@ -13,7 +13,7 @@ import pytest
 
 from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
-from src.training.resume_context import ResumeContext
+from src.training.schema import MetricsHistory, ResumeContext
 from src.training.runner import Runner
 
 SAMPLE_DATA_FILE = Path("/fake/data/stories.txt")
@@ -65,10 +65,10 @@ def _run_default(**overrides: object) -> None:
     Runner(**kwargs).run()
 
 
-def _patch_pipeline(history: dict[str, list[float]] | None = None):
+def _patch_pipeline(history: MetricsHistory | None = None):
     """Returns a context manager that patches the data + training pipeline
     so runner tests can drive only the orchestration paths."""
-    history = history if history is not None else {"train_loss": [0.7, 0.4]}
+    history = history if history is not None else MetricsHistory(train_loss=[0.7, 0.4])
 
     class _Ctx:
         def __enter__(self) -> dict[str, MagicMock]:
@@ -192,14 +192,14 @@ class TestRunCheckpointPersistence:
             assert metadata.tokenizer_config == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
 
     def test_metadata_records_final_loss_from_history(self) -> None:
-        history = {"train_loss": [0.9, 0.6, 0.3]}
+        history = MetricsHistory(train_loss=[0.9, 0.6, 0.3])
         with _patch_pipeline(history=history) as patched:
             _run_default()
             metadata = patched["save_checkpoint"].call_args.kwargs["metadata"]
             assert metadata.final_loss == 0.3
 
     def test_metadata_final_loss_is_none_for_empty_history(self) -> None:
-        with _patch_pipeline(history={"train_loss": []}) as patched:
+        with _patch_pipeline(history=MetricsHistory()) as patched:
             _run_default()
             metadata = patched["save_checkpoint"].call_args.kwargs["metadata"]
             assert metadata.final_loss is None

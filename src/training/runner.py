@@ -16,7 +16,7 @@ from src.config import TokenizerConfig, TrainingConfig
 from src.data.io import load_text_from_file
 from src.data.processor import Processor
 from src.model.model import NanoLLM
-from src.training.resume_context import ResumeContext
+from src.training.schema import MetricsHistory, ResumeContext
 from src.training.trainer import Trainer
 
 logger = logging.getLogger(__name__)
@@ -189,7 +189,7 @@ class Runner:
     def _persist_checkpoint(
         self,
         *,
-        metrics_history: dict[str, list[float]],
+        metrics_history: MetricsHistory,
         cumulative_epochs_completed: int,
     ) -> None:
         """Assemble checkpoint metadata and persist the model.
@@ -200,8 +200,7 @@ class Runner:
             logger.info("Checkpoint path undefined. No checkpoint persisted.")
             return
 
-        train_losses = metrics_history.get("train_loss", [])
-        final_loss = train_losses[-1] if train_losses else None
+        final_loss = metrics_history.final_train_loss
         metadata = CheckpointMetadata(
             cumulative_epochs_completed=cumulative_epochs_completed,
             final_loss=final_loss,
