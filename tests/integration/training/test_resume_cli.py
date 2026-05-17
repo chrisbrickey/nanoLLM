@@ -101,12 +101,12 @@ class TestResumeCliSourceCheckpointResolution:
                  patch("scripts.resume.ResumeContext.from_checkpoint") as mock_from_ckpt, \
                  patch("scripts.resume.get_latest_checkpoint", return_value=latest), \
                  patch("scripts.resume.count_params", return_value=0), \
-                 patch("scripts.resume.run") as mock_execute:
+                 patch("scripts.resume.Runner") as mock_runner_cls:
                 mock_build.return_value = (MagicMock(), MagicMock(), MagicMock())
                 mock_from_ckpt.return_value = MagicMock(
                     source=MagicMock(), previous_epochs_completed=3
                 )
-                mock_execute.return_value = None
+                mock_runner_cls.return_value.run.return_value = None
                 with patch("sys.argv", argv):
                     resume_main()
                 return mock_build

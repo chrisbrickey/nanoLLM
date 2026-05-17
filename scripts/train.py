@@ -32,7 +32,7 @@ from src.training.cli import (
     resolve_data_file,
     resolve_destination_checkpoint,
 )
-from src.training.runner import run
+from src.training.runner import Runner
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +76,14 @@ def main() -> None:
 
 
     try:
-        run(
+        runner = Runner(
             model=model,
             tokenizer_config=tokenizer_config,
             data_source=data_source,
             training_config=training_config,
             checkpoint_destination=checkpoint_destination,
         )
+        runner.run()
     except Exception as e:
         logger.error(f"Training failed: {e}")
         sys.exit(1)

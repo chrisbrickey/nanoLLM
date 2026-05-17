@@ -1,5 +1,5 @@
-# data
-data/
+# raw data
+/data/
 
 # model artifacts
 checkpoints/

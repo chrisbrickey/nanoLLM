@@ -1,4 +1,4 @@
-"""Unit tests for src/data/loader.py"""
+"""Unit tests for src/data/io.py"""
 
 import logging
 from collections.abc import Generator
@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import mock_open, patch
 import pytest
 
-from src.data.loader import load_text_from_file, calculate_batches
+from src.data.io import load_text_from_file
 
 TEST_FILE_PATH = "data/test_file.txt"  # Relative to project root
 DELIMITER = "<|endoftext|>"
@@ -20,7 +20,7 @@ class TestLoadStoriesFromFile:
 
     @pytest.fixture(autouse=True)
     def _capture_logs(self, caplog: pytest.LogCaptureFixture) -> Generator[None, None, None]:
-        with caplog.at_level(logging.INFO, logger="src.data.loader"):
+        with caplog.at_level(logging.INFO, logger="src.data.io"):
             yield
 
     def test_load_single_story_with_delimiter(self, caplog):
@@ -113,21 +113,3 @@ class TestLoadStoriesFromFile:
         assert TEST_FILE_PATH in caplog.text
         assert "/Users" not in caplog.text
         assert f"Loading data from {TEST_FILE_PATH}" in caplog.text
-
-
-class TestCalculateBatches:
-    """Unit tests for calculate_batches()"""
-
-    def test_returns_correct_value(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.INFO, logger="src.data.loader"):
-            result = calculate_batches(12, 4)
-        assert result == 3
-        assert "Calculated batches per epoch: 3" in caplog.text
-
-    def test_raises_when_batches_would_be_zero(self) -> None:
-        with pytest.raises(ValueError, match="must be > 0"):
-            calculate_batches(3, 4)  # 3 // 4 == 0
-
-    def test_raises_when_record_count_is_zero(self) -> None:
-        with pytest.raises(ValueError, match="must be > 0"):
-            calculate_batches(0, 4)
