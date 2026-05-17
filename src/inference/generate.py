@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_text(
+    *,
     model: NanoLLM,
     tokenizer_config: TokenizerConfig,
     inference_config: InferenceConfig,

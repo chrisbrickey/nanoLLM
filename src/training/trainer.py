@@ -40,7 +40,11 @@ class Trainer:
 
         # --- derived schedule (public for inspection by logs and notebooks) ---
         self.total_steps, self.warmup_steps = self._compute_step_counts(training_config, batches_per_epoch)
-        self.schedule = self._build_learning_rate_schedule(training_config, self.total_steps, self.warmup_steps)
+        self.schedule = self._build_learning_rate_schedule(
+            training_config=training_config,
+            total_steps=self.total_steps,
+            warmup_steps=self.warmup_steps
+        )
 
         # --- internal training apparatus (built from inputs, mutated during training) ---
         self.optimizer = nnx.ModelAndOptimizer(
@@ -136,6 +140,7 @@ class Trainer:
 
     @staticmethod
     def _build_learning_rate_schedule(
+        *,
         training_config: TrainingConfig,
         total_steps: int,
         warmup_steps: int,

@@ -146,8 +146,16 @@ def main() -> None:
 
         logger.info("Running checkpoint diff analysis. This may take a few minutes depending on the size of the model.")
 
-        norms_report = compare_norms(state_before, state_after)
-        states_report = compare_states(state_before, state_after, threshold=args.threshold)
+        norms_report = compare_norms(
+            state_before=state_before,
+            state_after=state_after
+        )
+
+        states_report = compare_states(
+            state_before=state_before,
+            state_after=state_after,
+            threshold=args.threshold
+        )
 
     except (FileNotFoundError, ValueError, OSError) as e:
         logger.error("%s", e)

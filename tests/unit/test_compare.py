@@ -68,7 +68,7 @@ def doubled_state() -> tuple[dict, dict]:
 class TestCompareNorms:
     def test_identical_states_gives_ratios_of_one(self, identical_states) -> None:
         state_a, state_b = identical_states
-        result = compare_norms(state_a, state_b)
+        result = compare_norms(state_before=state_a, state_after=state_b)
 
         assert result.median_ratio == pytest.approx(1.0, abs=1e-6)
         assert result.min_ratio == pytest.approx(1.0, abs=1e-6)
@@ -77,7 +77,7 @@ class TestCompareNorms:
 
     def test_doubled_state_gives_ratios_of_two(self, doubled_state) -> None:
         state_a, state_b = doubled_state
-        result = compare_norms(state_a, state_b)
+        result = compare_norms(state_before=state_a, state_after=state_b)
 
         assert result.median_ratio == pytest.approx(2.0, abs=1e-6)
         assert result.min_ratio == pytest.approx(2.0, abs=1e-6)
@@ -88,7 +88,7 @@ class TestCompareNorms:
         state_a = {"layer1": jnp.array([0.0, 0.0]), "layer2": jnp.array([1.0, 2.0])}
         state_b = {"layer1": jnp.array([1.0, 2.0]), "layer2": jnp.array([2.0, 4.0])}
 
-        result = compare_norms(state_a, state_b)
+        result = compare_norms(state_before=state_a, state_after=state_b)
 
         assert result.skipped_layers == 1
         assert result.compared_layers == 1
@@ -97,7 +97,7 @@ class TestCompareNorms:
         state_a = {"layer1": jnp.array([1.0, 2.0]), "layer2": jnp.array([3.0, 4.0])}
         state_b = {"layer1": jnp.array([0.0, 0.0]), "layer2": jnp.array([0.0, 0.0])}
 
-        result = compare_norms(state_a, state_b)
+        result = compare_norms(state_before=state_a, state_after=state_b)
 
         assert result.median_ratio == pytest.approx(0.0, abs=1e-6)
         assert result.min_ratio == pytest.approx(0.0, abs=1e-6)
@@ -109,7 +109,7 @@ class TestCompareNorms:
         state_a = {"layer1": jnp.array([tiny, tiny]), "layer2": jnp.array([1.0, 2.0])}
         state_b = {"layer1": jnp.array([1.0, 2.0]), "layer2": jnp.array([2.0, 4.0])}
 
-        result = compare_norms(state_a, state_b)
+        result = compare_norms(state_before=state_a, state_after=state_b)
 
         # The tiny-denominator leaf must be skipped
         assert result.skipped_layers >= 1
@@ -119,7 +119,7 @@ class TestCompareNorms:
         state_b = {"layer_different": jnp.array([1.0, 2.0])}
 
         with pytest.raises(ValueError):
-            compare_norms(state_a, state_b)
+            compare_norms(state_before=state_a, state_after=state_b)
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ class TestCompareNorms:
 class TestCompareStates:
     def test_identical_states_gives_zero_change(self, identical_states) -> None:
         state_a, state_b = identical_states
-        result = compare_states(state_a, state_b)
+        result = compare_states(state_before=state_a, state_after=state_b)
 
         assert result.percent_changed == pytest.approx(0.0, abs=1e-6)
         assert result.median_change == pytest.approx(0.0, abs=1e-6)
@@ -142,7 +142,7 @@ class TestCompareStates:
         state_a = {"layer1": jnp.array([1.0, 2.0]), "layer2": jnp.array([3.0, 4.0])}
         state_b = {"layer1": jnp.array([100.0, 200.0]), "layer2": jnp.array([300.0, 400.0])}
 
-        result = compare_states(state_a, state_b)
+        result = compare_states(state_before=state_a, state_after=state_b)
 
         assert result.percent_changed == pytest.approx(100.0, abs=1e-3)
 
@@ -151,7 +151,7 @@ class TestCompareStates:
         state_a = {"layer1": jnp.array([1.0, 2.0]), "layer2": jnp.array([3.0, 4.0])}
         state_b = {"layer1": jnp.array([1.0, 2.0]), "layer2": jnp.array([300.0, 400.0])}
 
-        result = compare_states(state_a, state_b)
+        result = compare_states(state_before=state_a, state_after=state_b)
 
         assert 0.0 < result.percent_changed < 100.0
 
@@ -160,7 +160,7 @@ class TestCompareStates:
         state_a = {"layer1": jnp.array([1.0, 2.0])}
         state_b = {"layer1": jnp.array([1.0 + small_delta, 2.0 + small_delta])}
 
-        result = compare_states(state_a, state_b, threshold=DEFAULT_CHANGE_THRESHOLD)
+        result = compare_states(state_before=state_a, state_after=state_b, threshold=DEFAULT_CHANGE_THRESHOLD)
 
         assert result.changed_params == 0
         assert result.percent_changed == pytest.approx(0.0, abs=1e-6)
@@ -170,7 +170,7 @@ class TestCompareStates:
         state_a = {"layer1": jnp.array([1.0, 2.0])}
         state_b = {"layer1": jnp.array([1.0 + large_delta, 2.0 + large_delta])}
 
-        result = compare_states(state_a, state_b, threshold=DEFAULT_CHANGE_THRESHOLD)
+        result = compare_states(state_before=state_a, state_after=state_b, threshold=DEFAULT_CHANGE_THRESHOLD)
 
         assert result.changed_params == 2
 
@@ -179,7 +179,7 @@ class TestCompareStates:
         state_a = {"layer1": jnp.array([1.0])}
         state_b = {"layer1": jnp.array([2.0])}
 
-        result = compare_states(state_a, state_b, threshold=custom_threshold)
+        result = compare_states(state_before=state_a, state_after=state_b, threshold=custom_threshold)
 
         assert result.change_threshold == pytest.approx(custom_threshold)
 
@@ -188,7 +188,7 @@ class TestCompareStates:
         state_b = {"layer_different": jnp.array([1.0, 2.0])}
 
         with pytest.raises(ValueError):
-            compare_states(state_a, state_b)
+            compare_states(state_before=state_a, state_after=state_b)
 
 
 # ---------------------------------------------------------------------------

@@ -46,7 +46,7 @@ class StateComparison:
     change_threshold: float   # threshold used to determine if a parameter has "changed"
 
 
-def compare_norms(state_before: nnx.State, state_after: nnx.State) -> NormsComparison:
+def compare_norms(*, state_before: nnx.State, state_after: nnx.State) -> NormsComparison:
     """Compare per-leaf L2-norm ratios between two model states.
 
     Arguments:
@@ -106,9 +106,9 @@ def compare_norms(state_before: nnx.State, state_after: nnx.State) -> NormsCompa
 
 
 def compare_states(
+    *,
     state_before: nnx.State,
     state_after: nnx.State,
-    *,
     threshold: float = DEFAULT_CHANGE_THRESHOLD,
 ) -> StateComparison:
     """Compare per-parameter absolute differences between two model states.
