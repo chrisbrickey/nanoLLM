@@ -6,6 +6,7 @@ import dataclasses
 import logging
 import shutil
 import uuid
+import warnings
 from collections.abc import Callable, Generator
 from pathlib import Path
 
@@ -72,6 +73,22 @@ class TestSaveLoadRoundTrip:
         assert "Checkpoint saved" in caplog.text
         assert "Loading checkpoint" in caplog.text
         assert "Checkpoint loaded" in caplog.text
+
+    def test_restore_emits_no_sharding_warning(
+        self,
+        make_tiny_model: Callable[..., NanoLLM],
+        project_checkpoint_path: Path,
+    ) -> None:
+        original = make_tiny_model(seed=0)
+        save_checkpoint(original, project_checkpoint_path)
+        restored_model = make_tiny_model(seed=99)
+
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            apply_checkpoint(restored_model, project_checkpoint_path)
+
+        sharding_warnings = [w for w in recorded if "Sharding info not provided" in str(w.message)]
+        assert sharding_warnings == []
 
 
 class TestBuildModelFromCheckpoint:

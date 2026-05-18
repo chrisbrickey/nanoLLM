@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import jax
 import flax.nnx as nnx
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,7 @@ def load_metadata(path: Path) -> CheckpointMetadata | None:
 
 def apply_checkpoint(model: nnx.Module, path: Path) -> nnx.Module:
     """Restore weights to an existing model (restores model state) from an orbax checkpoint bundle.
+
     Use when model already exists, e.g., during a training session. This function
     restores the model to resume training that was previously paused.
 
@@ -146,7 +148,18 @@ def apply_checkpoint(model: nnx.Module, path: Path) -> nnx.Module:
     logger.info(f"Loading checkpoint from {validated_path}")
     checkpointer = ocp.PyTreeCheckpointer()
     try:
-        restored_state = checkpointer.restore(weights_path, item=nnx.state(model))
+        # Construct and pass explicit restore_args parameter
+        # This communicates to orbax the current device's sharding
+        # so that model can be updated safely from a checkpoint
+        # regardless of any difference between training architecture
+        # (CPUs/GPUs) and the current device's architecture.
+        state = nnx.state(model)
+        sharding = jax.sharding.SingleDeviceSharding(jax.devices()[0])
+        restore_args = jax.tree_util.tree_map(
+            lambda _: ocp.ArrayRestoreArgs(sharding=sharding),
+            state,
+        )
+        restored_state = checkpointer.restore(weights_path, item=state, restore_args=restore_args)
     except (FileNotFoundError, ValueError, KeyError) as e:
         raise ValueError(f"Failed to load checkpoint at {validated_path}: {e}") from e
 
