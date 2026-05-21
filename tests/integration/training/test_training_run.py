@@ -14,8 +14,9 @@ import pytest
 from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
-from src.training.schema import ResumeContext
+from src.training.checkpoint import save_checkpoint
 from src.training.runner import Runner
+from src.training.schema import CheckpointMetadata
 from src.training.trainer import Trainer
 
 SAMPLE_DATA_SOURCE = Path("/fake/data/stories.txt")
@@ -58,17 +59,19 @@ def project_checkpoint_destination() -> Generator[Path, None, None]:
         shutil.rmtree(path)
 
 
-def _make_model() -> NanoLLM:
-    return NanoLLM(
-        ModelConfig(
-            maxlen=MAXLEN,
-            vocab_size=VOCAB_SIZE,
-            embed_dim=EMBED_DIM,
-            num_heads=NUM_HEADS,
-            feed_forward_dim=FF_DIM,
-            num_transformer_blocks=NUM_BLOCKS,
-        )
+def _make_model_config() -> ModelConfig:
+    return ModelConfig(
+        maxlen=MAXLEN,
+        vocab_size=VOCAB_SIZE,
+        embed_dim=EMBED_DIM,
+        num_heads=NUM_HEADS,
+        feed_forward_dim=FF_DIM,
+        num_transformer_blocks=NUM_BLOCKS,
     )
+
+
+def _make_model() -> NanoLLM:
+    return NanoLLM(_make_model_config())
 
 
 def _make_training_config() -> TrainingConfig:
@@ -85,10 +88,9 @@ def _make_trainer() -> Trainer:
 
 
 def _run_with_patched_data(
-    model: NanoLLM,
     *,
     checkpoint_destination: Path | None,
-    resume_from: ResumeContext | None = None,
+    checkpoint_source: Path | None = None,
 ) -> None:
     """Drives Runner.run with patched data loading so the test stays
     deterministic and avoids tokenizing real text."""
@@ -96,18 +98,23 @@ def _run_with_patched_data(
     dataloader = _FakeDataLoader(n_batches=N_BATCHES, maxlen=MAXLEN, batch_size=BATCH_SIZE)
     # Provide enough stories to satisfy len(stories) // batch_size >= 1
     fake_stories = [f"s{i}" for i in range(BATCH_SIZE * N_BATCHES)]
+
+    runner_kwargs: dict[str, object] = dict(
+        data_source=SAMPLE_DATA_SOURCE,
+        training_config=config,
+        checkpoint_destination=checkpoint_destination,
+    )
+    if checkpoint_source is not None:
+        runner_kwargs["checkpoint_source"] = checkpoint_source
+    else:
+        runner_kwargs["model_config"] = _make_model_config()
+        runner_kwargs["tokenizer_config"] = SAMPLE_TOKENIZER_CONFIG
+
     processor = patch("src.training.runner.Processor")
     with patch("src.training.runner.load_text_from_file", return_value=fake_stories), \
          processor as mock_processor:
         mock_processor.return_value.process.return_value = dataloader
-        Runner(
-            model=model,
-            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
-            data_source=SAMPLE_DATA_SOURCE,
-            training_config=config,
-            checkpoint_destination=checkpoint_destination,
-            resume_from=resume_from,
-        ).run()
+        Runner(**runner_kwargs).run()
 
 
 class TestTrainLoop:
@@ -137,7 +144,7 @@ class TestRunnerCheckpointOnDisk:
     containing the expected metadata."""
 
     def test_checkpoint_written_to_disk(self, project_checkpoint_destination: Path) -> None:
-        _run_with_patched_data(_make_model(), checkpoint_destination=project_checkpoint_destination)
+        _run_with_patched_data(checkpoint_destination=project_checkpoint_destination)
         assert project_checkpoint_destination.exists()
         assert (project_checkpoint_destination / "weights.orbax").exists()
         assert (project_checkpoint_destination / "metadata.json").exists()
@@ -145,42 +152,54 @@ class TestRunnerCheckpointOnDisk:
     def test_tokenizer_config_written_to_metadata_json(
         self, project_checkpoint_destination: Path
     ) -> None:
-        _run_with_patched_data(_make_model(), checkpoint_destination=project_checkpoint_destination)
+        _run_with_patched_data(checkpoint_destination=project_checkpoint_destination)
         saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
         assert saved["tokenizer_config"] == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
 
     def test_final_loss_written_to_metadata_json(
         self, project_checkpoint_destination: Path
     ) -> None:
-        _run_with_patched_data(_make_model(), checkpoint_destination=project_checkpoint_destination)
+        _run_with_patched_data(checkpoint_destination=project_checkpoint_destination)
         saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
         final_loss = saved["final_loss"]
         assert isinstance(final_loss, float)
         assert final_loss > 0.0
         assert final_loss < float("inf")
 
-    def test_prior_epochs_written_to_metadata_json(
+    def test_prior_epochs_carry_forward_via_checkpoint_source(
         self, project_checkpoint_destination: Path
     ) -> None:
-        """When resume_from carries previous_epochs_completed=10 and training
-        runs for EPOCHS, metadata.json on disk must record
+        """When a source checkpoint records cumulative_epochs_completed=10
+        and training adds EPOCHS, metadata.json on disk must record
         cumulative_epochs_completed=10+EPOCHS."""
-        prior = 10
-        resume_ctx = ResumeContext(
-            source=Path("/fake/checkpoints/prior_bundle"),
-            previous_epochs_completed=prior,
-        )
-        _run_with_patched_data(
-            _make_model(),
-            checkpoint_destination=project_checkpoint_destination,
-            resume_from=resume_ctx,
-        )
-        saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
-        assert saved["cumulative_epochs_completed"] == prior + EPOCHS
+        prior_epochs = 10
+        prior_source = CHECKPOINTS_DIR / f"integration_prior_{uuid.uuid4().hex[:8]}"
+        try:
+            seed_model = _make_model()
+            save_checkpoint(
+                seed_model,
+                prior_source,
+                metadata=CheckpointMetadata(
+                    cumulative_epochs_completed=prior_epochs,
+                    model_config=dataclasses.asdict(seed_model.config),
+                    tokenizer_config=dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG),
+                ),
+            )
+            _run_with_patched_data(
+                checkpoint_destination=project_checkpoint_destination,
+                checkpoint_source=prior_source,
+            )
+            saved = json.loads(
+                (project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8")
+            )
+            assert saved["cumulative_epochs_completed"] == prior_epochs + EPOCHS
+        finally:
+            if prior_source.exists():
+                shutil.rmtree(prior_source)
 
     def test_no_destination_skips_persistence(self, tmp_path: Path) -> None:
         """When checkpoint_destination is None, no bundle is written."""
-        _run_with_patched_data(_make_model(), checkpoint_destination=None)
+        _run_with_patched_data(checkpoint_destination=None)
         # Nothing to assert beyond "didn't raise"; tmp_path is unused but the
         # call validates that the no-destination branch is exercised.
         assert not (tmp_path / "anything.json").exists()

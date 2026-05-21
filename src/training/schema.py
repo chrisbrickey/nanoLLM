@@ -5,9 +5,8 @@ Value objects and data schemas for the training pipeline.
 """
 
 from dataclasses import dataclass, field
-from pathlib import Path
-
-from src.checkpoint import load_metadata
+from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -28,27 +27,18 @@ class MetricsHistory:
         return self.train_loss[-1] if self.train_loss else None
 
 
-@dataclass(frozen=True)
-class ResumeContext:
-    """Resume-time context for a training run loaded from a checkpoint."""
+@dataclass
+class CheckpointMetadata:
+    """Persisted alongside a checkpoint bundle's weights.
 
-    source: Path
-    previous_epochs_completed: int
+    Holds enough state to reconstruct the model/tokenizer
+    from scratch (before applying the orbax weights) and
+    resume training with accurate cumulative epoch count.
+    """
 
-    @classmethod
-    def from_checkpoint(cls, source: Path) -> "ResumeContext":
-        """Build a ResumeContext by reading cumulative_epochs_completed from
-        the checkpoint's metadata.
-
-        Raises:
-            ValueError: If the checkpoint has no readable metadata.
-        """
-        metadata = load_metadata(source)
-        if metadata is None:
-            raise ValueError(
-                f"Cannot resume from {source}: no readable metadata found."
-            )
-        return cls(
-            source=source,
-            previous_epochs_completed=metadata.cumulative_epochs_completed,
-        )
+    cumulative_epochs_completed: int
+    final_loss: float | None = None
+    model_config: dict[str, Any] | None = None
+    tokenizer_config: dict[str, Any] | None = None
+    training_config: dict[str, Any] | None = None
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())

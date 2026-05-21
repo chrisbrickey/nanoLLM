@@ -12,11 +12,12 @@ from unittest.mock import patch
 import pytest
 
 from scripts.compare_checkpoints import main
-from src.checkpoint import CheckpointMetadata, save_checkpoint
 from src.compare import DEFAULT_CHANGE_THRESHOLD
 from src.config import ModelConfig, TokenizerConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
+from src.training.checkpoint import save_checkpoint
+from src.training.schema import CheckpointMetadata
 
 # ---------------------------------------------------------------------------
 # Small model constants to keep tests fast

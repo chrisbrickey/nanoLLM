@@ -1,5 +1,5 @@
 """
-nanoLLM/src/checkpoint.py
+nanoLLM/src/training/checkpoint.py
 
 Save and load model checkpoints. Used by training (save/resume) and inference (load weights).
 """
@@ -7,10 +7,8 @@ Save and load model checkpoints. Used by training (save/resume) and inference (l
 import dataclasses
 import json
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import jax
 import flax.nnx as nnx
@@ -18,19 +16,10 @@ import flax.nnx as nnx
 logger = logging.getLogger(__name__)
 import orbax.checkpoint as ocp
 
-from src.config import ModelConfig, TokenizerConfig
+from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR, validate_project_path
-
-
-@dataclass
-class CheckpointMetadata:
-    cumulative_epochs_completed: int
-    final_loss: float | None = None
-    model_config: dict[str, Any] | None = None
-    training_config: dict[str, Any] | None = None
-    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
-    tokenizer_config: dict[str, Any] | None = None
+from src.training.schema import CheckpointMetadata
 
 #--- save checkpoint ---
 
@@ -64,6 +53,29 @@ def _write_metadata(bundle_path: Path, metadata: CheckpointMetadata) -> None:
         json.dumps(dataclasses.asdict(metadata), indent=2),
         encoding="utf-8",
     )
+
+def build_and_save_checkpoint(
+    model: NanoLLM,
+    destination: Path,
+    *,
+    training_config: TrainingConfig,
+    tokenizer_config: TokenizerConfig,
+    cumulative_epochs_completed: int,
+    final_loss: float | None,
+) -> None:
+    """Assemble CheckpointMetadata from training state and persist the bundle.
+
+    Centralizes metadata shape so callers (e.g. Runner) only supply their
+    training-state inputs rather than constructing CheckpointMetadata directly.
+    """
+    metadata = CheckpointMetadata(
+        cumulative_epochs_completed=cumulative_epochs_completed,
+        final_loss=final_loss,
+        model_config=dataclasses.asdict(model.config),
+        training_config=dataclasses.asdict(training_config),
+        tokenizer_config=dataclasses.asdict(tokenizer_config),
+    )
+    save_checkpoint(model, destination, metadata=metadata)
 
 #--- load checkpoint ---
 
@@ -175,21 +187,24 @@ _MANUAL_LOAD_HINT = (
 
 def restore_from_checkpoint(
     path: Path,
-) -> tuple[NanoLLM, TokenizerConfig]:
-    """Build a NanoLLM and reconstruct its configs from a checkpoint bundle.
+) -> tuple[NanoLLM, TokenizerConfig, CheckpointMetadata]:
+    """Build a pre-trained NanoLLM and reconstruct relevant configs from a checkpoint bundle.
 
-    Requires a complete metadata.json in the checkpoint bundle — both model_config
-    and tokenizer_config must be present. Use this when rebuilding a model from scratch.
-
+    This method uses both the standard orbax directory and the non-standard json sidecar (METADATA.json).
     If metadata is absent or incomplete, use the manual approach instead:
-    Call apply_checkpoint() to restore weights and manually construct the configs.
+    Call apply_checkpoint() to restore weights and manually construct the relevant configs.
 
     Returns:
-        Tuple of (model, tokenizer_config). Access model_config via model.config.
-        Both elements are required for resumed training and for inference,
-        but we do not combine them into a single structure. Why? Models and
-        tokenizers should not be permanently coupled. We might want to retrain
-        the model using a different tokenizer in the future.
+        Tuple of (model, tokenizer_config, metadata). Access model_config via model.config.
+
+        Returning a tuple of multiple, uncoupled entities is a tradeoff to gain the
+        benefit of one central location where a checkpoint is parsed. This prevents
+        callers from loading and parsing a checkpoint more than once to access data.
+
+        All three elements are required for resumed training. They remain distinct
+        entities (instead of packaged in one structure) because models and tokenizers
+        should not be permanently coupled.We might want to retrain the model using
+        a different tokenizer.
 
     Raises:
         FileNotFoundError: path or weights.orbax missing (delegated to apply_checkpoint).
@@ -215,4 +230,4 @@ def restore_from_checkpoint(
     model = NanoLLM(model_config)
     apply_checkpoint(model, validated_path)
 
-    return model, tokenizer_config
+    return model, tokenizer_config, metadata

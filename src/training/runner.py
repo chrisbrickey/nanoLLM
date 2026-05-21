@@ -7,16 +7,15 @@ This module can be used by all types of entry points
 agnostic, typed configurations.
 """
 
-import dataclasses
 import logging
 from pathlib import Path
 
-from src.checkpoint import CheckpointMetadata, save_checkpoint
-from src.config import TokenizerConfig, TrainingConfig
+from src.config import ModelConfig, TokenizerConfig, TrainingConfig
 from src.data.io import load_text_from_file
 from src.data.processor import Processor
-from src.model.model import NanoLLM
-from src.training.schema import MetricsHistory, ResumeContext
+from src.model.model import NanoLLM, count_params
+from src.training.checkpoint import build_and_save_checkpoint, restore_from_checkpoint
+from src.training.schema import CheckpointMetadata, MetricsHistory
 from src.training.trainer import Trainer
 
 logger = logging.getLogger(__name__)
@@ -24,50 +23,66 @@ logger = logging.getLogger(__name__)
 
 class Runner:
     """Orchestrates a single training run end-to-end:
-    loads data, preprocesses it, trains the model, and
-    optionally persists a new checkpoint.
+    builds (or restores) the model, loads data, preprocesses it,
+    trains the model, and optionally persists a new checkpoint.
 
-    Also manages loading weights from a checkpoint via the
-    optional resume context.
+    Callers supply either:
+        - model_config + tokenizer_config (fresh training), or
+        - checkpoint_source (resume training; configs are read from the bundle)
+
+    If both are supplied, the checkpoint's configs supersede the explicit
+    arguments and a warning is logged.
     """
 
     def __init__(
         self,
         *,
-        model: NanoLLM,
-        tokenizer_config: TokenizerConfig,
         data_source: Path,
         training_config: TrainingConfig,
         checkpoint_destination: Path | None,
-        resume_from: ResumeContext | None = None,
+        model_config: ModelConfig | None = None,
+        tokenizer_config: TokenizerConfig | None = None,
+        checkpoint_source: Path | None = None,
     ) -> None:
         """
         Args:
             For execution of training...
-            - model: the model to train
-            - tokenizer_config: tokenizer settings used for data preprocessing
             - data_source: path to the raw text file
             - training_config: training parameters
-
-            For checkpoint loading and persistence...
             - checkpoint_destination: where to write the checkpoint after training;
                                 if None, checkpoint is not persisted
-            - resume_from: ResumeContext with the data required when resuming a prior run;
-                                if None, checkpoint (pre-trained) weights is not loaded
+
+            For model construction (one of)...
+            - model_config + tokenizer_config: build a fresh, untrained model
+            - checkpoint_source: load a pre-trained model and its configs from
+                                checkpoint bundle. Supersedes model_config/tokenizer_config
+
+        Raises:
+            ValueError: if neither (model_config + tokenizer_config) nor
+                        checkpoint_source is provided.
         """
-        self.model = model
-        self.tokenizer_config = tokenizer_config
+        if checkpoint_source is None and (model_config is None or tokenizer_config is None):
+            raise ValueError(
+                "Runner requires either checkpoint_source (to load pre-trained model) or both ",
+                "model_config and tokenizer_config (to load fresh untrained model)."
+            )
+
         self.data_source = data_source
         self.training_config = training_config
         self.checkpoint_destination = checkpoint_destination
-        self.resume_from = resume_from
+        self.checkpoint_source = checkpoint_source
+        self._initial_model_config = model_config
+        self._initial_tokenizer_config = tokenizer_config
+
+        # Populated by _prepare_model() during run().
+        self.model: NanoLLM | None = None
+        self.tokenizer_config: TokenizerConfig | None = None
+        self.previous_metadata: CheckpointMetadata | None = None
 
     def run(self) -> MetricsHistory:
         """Shared boilerplate for training pathways:
-        loads data, preprocesses it, trains the model.
-
-        It also manages loading weights from a checkpoint
-        and persisting a new checkpoint after training run.
+        builds (or restores) the model, loads data, preprocesses it,
+        trains the model, and optionally persists a new checkpoint.
 
         Raises:
             FileNotFoundError: if data_source does not exist
@@ -77,8 +92,9 @@ class Runner:
         # Log checkpoint characteristics
         if self.checkpoint_destination is None:
             logger.warning("No checkpoint_destination path provided so no checkpoint will be persisted.")
-        if self.resume_from is None:
-            logger.info("No resume context received so no pre-trained weights will be loaded.")
+
+        # Build or restore the model
+        self._prepare_model()
 
         # Load the data
         logger.info("Loading data ...")
@@ -106,9 +122,8 @@ class Runner:
         logger.info("Data processing complete.")
 
         # Log training configuration
-        previous_epochs_completed, checkpoint_source = self._unpack_resume_context()
+        previous_epochs_completed = self._previous_epochs_completed()
         header_lines = self._build_training_header_lines(
-            checkpoint_source=checkpoint_source,
             previous_epochs=previous_epochs_completed,
         )
         logger.info("\n\n%s\n\n", "\n".join(header_lines))
@@ -140,6 +155,31 @@ class Runner:
 
     # --- private methods ---
 
+    def _prepare_model(self) -> None:
+        """Populate self.model, self.tokenizer_config, and self.previous_metadata.
+
+        If checkpoint_source is set, restore from it (and warn if explicit
+        configs were also passed, since they will be ignored).
+        Otherwise, construct a fresh NanoLLM from the provided model_config
+        and use the provided tokenizer_config.
+        """
+        if self.checkpoint_source is not None:
+            if self._initial_model_config is not None or self._initial_tokenizer_config is not None:
+                logger.warning(
+                    "checkpoint_source provided; model_config and tokenizer_config "
+                    "arguments will be ignored in favor of values from the checkpoint."
+                )
+            logger.info(f"Loading checkpoint from {self.checkpoint_source}")
+            self.model, self.tokenizer_config, self.previous_metadata = restore_from_checkpoint(
+                self.checkpoint_source
+            )
+        else:
+            logger.info("No checkpoint_source provided; building fresh model from model_config.")
+            self.model = NanoLLM(self._initial_model_config)
+            self.tokenizer_config = self._initial_tokenizer_config
+            self.previous_metadata = None
+        logger.info(f"Model ready ({count_params(self.model)} parameters)")
+
     def _calculate_batches(self, record_count: int) -> int:
         """Compute and validate batches per epoch from dataset size and batch size.
 
@@ -163,7 +203,6 @@ class Runner:
     def _build_training_header_lines(
         self,
         *,
-        checkpoint_source: Path | None,
         previous_epochs: int,
     ) -> list[str]:
         """Build a per-invocation summary header as a list of lines."""
@@ -175,18 +214,16 @@ class Runner:
             f"\tshuffle:                {self.training_config.shuffle}",
             f"\tseed:                   {self.training_config.seed}",
             "",
-            f"\tcheckpoint source:       {checkpoint_source}",
             f"\tprevious epochs trained: {previous_epochs}",
             "",
             f"\tcheckpoint destination: {self.checkpoint_destination}",
         ]
 
-    def _unpack_resume_context(self) -> tuple[int, Path | None]:
-        """Return (previous_epochs_completed, checkpoint_source), defaulting to (0, None)
-        when no resume context is provided."""
-        if self.resume_from is None:
-            return 0, None
-        return self.resume_from.previous_epochs_completed, self.resume_from.source
+    def _previous_epochs_completed(self) -> int:
+        """Cumulative epochs from prior checkpoint, defaulting to 0 when no metadata is provided."""
+        if self.previous_metadata is None:
+            return 0
+        return self.previous_metadata.cumulative_epochs_completed
 
     def _persist_checkpoint(
         self,
@@ -194,7 +231,7 @@ class Runner:
         metrics_history: MetricsHistory,
         cumulative_epochs_completed: int,
     ) -> None:
-        """Assemble checkpoint metadata and persist the model.
+        """Persist the model and its metadata to the checkpoint destination.
 
         Skips persistence (logging only) when destination is None.
         """
@@ -202,12 +239,11 @@ class Runner:
             logger.info("Checkpoint path undefined. No checkpoint persisted.")
             return
 
-        final_loss = metrics_history.final_train_loss
-        metadata = CheckpointMetadata(
+        build_and_save_checkpoint(
+            self.model,
+            self.checkpoint_destination,
+            training_config=self.training_config,
+            tokenizer_config=self.tokenizer_config,
             cumulative_epochs_completed=cumulative_epochs_completed,
-            final_loss=final_loss,
-            model_config=dataclasses.asdict(self.model.config),
-            training_config=dataclasses.asdict(self.training_config),
-            tokenizer_config=dataclasses.asdict(self.tokenizer_config),
+            final_loss=metrics_history.final_train_loss,
         )
-        save_checkpoint(self.model, self.checkpoint_destination, metadata=metadata)
