@@ -24,20 +24,15 @@ import logging
 import sys
 from pathlib import Path
 
-from src.checkpoint import (
-    restore_from_checkpoint,
-    get_latest_checkpoint,
-)
 from src.logging_setup import setup_logging
-from src.model.model import count_params
 from src.paths import CHECKPOINTS_DIR
+from src.training.checkpoint import get_latest_checkpoint
 from src.training.cli import (
     add_shared_training_args,
     build_training_config,
     resolve_data_file,
     resolve_destination_checkpoint,
 )
-from src.training.schema import ResumeContext
 from src.training.runner import Runner
 
 logger = logging.getLogger(__name__)
@@ -77,28 +72,13 @@ def main() -> None:
     try:
         # Resolve checkpoint source bundle (defaults to most recent)
         if args.checkpoint_source:
-            source_path: Path | None = Path(args.checkpoint_source)
+            checkpoint_source: Path | None = Path(args.checkpoint_source)
         else:
-            source_path = get_latest_checkpoint(CHECKPOINTS_DIR)
-            if source_path is None:
+            checkpoint_source = get_latest_checkpoint(CHECKPOINTS_DIR)
+            if checkpoint_source is None:
                 raise FileNotFoundError(f"No checkpoints found in {CHECKPOINTS_DIR}.")
     except Exception as e:
         logger.error(f"Failed to resolve checkpoint source bundle: {e}")
-        sys.exit(1)
-
-    try:
-        # Retrieve and apply data from checkpoint bundle
-        # These methods look at both the standard orbax file structure and the non-standard json sidecar (METADATA.json).
-
-        # Load trained model
-        logger.info(f"Loading checkpoint from {source_path}")
-        model, tokenizer_config = restore_from_checkpoint(source_path)
-        logger.info(f"Model ready ({count_params(model)} parameters)")
-
-        # Pair the source with its cumulative epoch count in one step to avoid divergence
-        resume_ctx = ResumeContext.from_checkpoint(source_path)
-    except Exception as e:
-        logger.error(f"Failed to retrieve and apply data from checkpoint bundle: {e}")
         sys.exit(1)
 
 
@@ -107,12 +87,10 @@ def main() -> None:
 
     try:
         runner = Runner(
-            model=model,
-            tokenizer_config=tokenizer_config,
             data_source=data_source,
             training_config=training_config,
             checkpoint_destination=checkpoint_destination,
-            resume_from=resume_ctx,
+            checkpoint_source=checkpoint_source,
         )
         runner.run()
     except Exception as e:

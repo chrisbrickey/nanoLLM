@@ -1,6 +1,6 @@
-"""Integration tests for src/checkpoint.py — exercises real orbax weight
+"""Integration tests for src/training/checkpoint.py — exercises real orbax weight
 serialization. Path-validation, metadata.json handling, and error branches
-are unit-tested in tests/unit/test_checkpoint.py with orbax patched."""
+are unit-tested in tests/unit/training/test_checkpoint.py with orbax patched."""
 
 import dataclasses
 import logging
@@ -15,15 +15,15 @@ import jax.numpy as jnp
 import flax.nnx as nnx
 import pytest
 
-from src.checkpoint import (
-    CheckpointMetadata,
+from src.config import ModelConfig, TokenizerConfig
+from src.model.model import NanoLLM
+from src.paths import CHECKPOINTS_DIR
+from src.training.checkpoint import (
     apply_checkpoint,
     restore_from_checkpoint,
     save_checkpoint,
 )
-from src.config import ModelConfig, TokenizerConfig
-from src.model.model import NanoLLM
-from src.paths import CHECKPOINTS_DIR
+from src.training.schema import CheckpointMetadata
 
 SAMPLE_TOKENIZER_CONFIG: dict[str, object] = {
     "delimiter": "<|endoftext|>",
@@ -59,7 +59,7 @@ class TestSaveLoadRoundTrip:
     ) -> None:
         original = make_tiny_model(seed=0)
 
-        with caplog.at_level(logging.INFO, logger="src.checkpoint"):
+        with caplog.at_level(logging.INFO, logger="src.training.checkpoint"):
             save_checkpoint(original, project_checkpoint_path)
 
             # Initialize with a different seed so params start different
@@ -98,17 +98,23 @@ class TestBuildModelFromCheckpoint:
         model_config = ModelConfig(**SAMPLE_MODEL_CONFIG_DICT)
         tokenizer_config = TokenizerConfig(**SAMPLE_TOKENIZER_CONFIG)
         original = NanoLLM(model_config)
+        cumulative_epochs = 1
         metadata = CheckpointMetadata(
-            cumulative_epochs_completed=1,
+            cumulative_epochs_completed=cumulative_epochs,
             model_config=dataclasses.asdict(model_config),
             tokenizer_config=dataclasses.asdict(tokenizer_config),
         )
         save_checkpoint(original, project_checkpoint_path, metadata=metadata)
 
-        loaded_model, loaded_tokenizer_config = restore_from_checkpoint(project_checkpoint_path)
+        loaded_model, loaded_tokenizer_config, loaded_metadata = restore_from_checkpoint(
+            project_checkpoint_path
+        )
 
         assert loaded_model.config == model_config
         assert loaded_tokenizer_config == tokenizer_config
+        assert loaded_metadata.cumulative_epochs_completed == cumulative_epochs
+        assert loaded_metadata.model_config == dataclasses.asdict(model_config)
+        assert loaded_metadata.tokenizer_config == dataclasses.asdict(tokenizer_config)
         orig_leaves = jax.tree_util.tree_leaves(nnx.state(original))
         loaded_leaves = jax.tree_util.tree_leaves(nnx.state(loaded_model))
         assert all(jnp.allclose(a, b) for a, b in zip(orig_leaves, loaded_leaves))

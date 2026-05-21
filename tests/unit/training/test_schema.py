@@ -1,21 +1,21 @@
-"""Unit tests for src/training/schema.py — MetricsHistory and ResumeContext."""
+"""Unit tests for src/training/schema.py — MetricsHistory and CheckpointMetadata."""
 
-import dataclasses
-from pathlib import Path
-from unittest.mock import patch
+from datetime import datetime
 
 import pytest
 
-from src.checkpoint import CheckpointMetadata
-from src.training.schema import MetricsHistory, ResumeContext
+from src.training.schema import CheckpointMetadata, MetricsHistory
 
 
 # ---------------------------------------------------------------------------
 # Shared constants
 # ---------------------------------------------------------------------------
 
-SAMPLE_SOURCE = Path("/fake/checkpoints/sample_bundle")
-SAMPLE_PRIOR_EPOCHS = 7
+SAMPLE_CUMULATIVE_EPOCHS = 7
+SAMPLE_FINAL_LOSS = 0.42
+SAMPLE_MODEL_CONFIG = {"embed_dim": 12}
+SAMPLE_TRAINING_CONFIG = {"epochs": 7}
+SAMPLE_TOKENIZER_CONFIG = {"name": "gpt2"}
 
 
 # ---------------------------------------------------------------------------
@@ -72,29 +72,34 @@ class TestMetricsHistoryEquality:
 
 
 # ---------------------------------------------------------------------------
-# ResumeContext
+# CheckpointMetadata
 # ---------------------------------------------------------------------------
 
-class TestResumeContextFromCheckpoint:
-    def test_pulls_cumulative_epochs_from_metadata(self) -> None:
-        sample_metadata = CheckpointMetadata(
-            cumulative_epochs_completed=SAMPLE_PRIOR_EPOCHS,
+class TestCheckpointMetadataDefaults:
+    def test_minimum_construction_only_requires_cumulative_epochs(self) -> None:
+        meta = CheckpointMetadata(cumulative_epochs_completed=SAMPLE_CUMULATIVE_EPOCHS)
+        assert meta.cumulative_epochs_completed == SAMPLE_CUMULATIVE_EPOCHS
+        assert meta.final_loss is None
+        assert meta.model_config is None
+        assert meta.training_config is None
+        assert meta.tokenizer_config is None
+
+    def test_created_at_defaults_to_an_iso_timestamp(self) -> None:
+        meta = CheckpointMetadata(cumulative_epochs_completed=1)
+        # Should parse as ISO 8601 without raising
+        datetime.fromisoformat(meta.created_at)
+
+
+class TestCheckpointMetadataFields:
+    def test_records_all_provided_fields(self) -> None:
+        meta = CheckpointMetadata(
+            cumulative_epochs_completed=SAMPLE_CUMULATIVE_EPOCHS,
+            final_loss=SAMPLE_FINAL_LOSS,
+            model_config=SAMPLE_MODEL_CONFIG,
+            training_config=SAMPLE_TRAINING_CONFIG,
+            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
         )
-        with patch("src.training.schema.load_metadata", return_value=sample_metadata) as mock_load:
-            ctx = ResumeContext.from_checkpoint(SAMPLE_SOURCE)
-
-        mock_load.assert_called_once_with(SAMPLE_SOURCE)
-        assert ctx.source == SAMPLE_SOURCE
-        assert ctx.previous_epochs_completed == SAMPLE_PRIOR_EPOCHS
-
-    def test_raises_when_metadata_missing(self) -> None:
-        with patch("src.training.schema.load_metadata", return_value=None):
-            with pytest.raises(ValueError, match="no readable metadata"):
-                ResumeContext.from_checkpoint(SAMPLE_SOURCE)
-
-
-class TestResumeContextImmutability:
-    def test_dataclass_is_frozen(self) -> None:
-        ctx = ResumeContext(source=SAMPLE_SOURCE, previous_epochs_completed=1)
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            ctx.previous_epochs_completed = 2  # type: ignore[misc]
+        assert meta.final_loss == SAMPLE_FINAL_LOSS
+        assert meta.model_config == SAMPLE_MODEL_CONFIG
+        assert meta.training_config == SAMPLE_TRAINING_CONFIG
+        assert meta.tokenizer_config == SAMPLE_TOKENIZER_CONFIG

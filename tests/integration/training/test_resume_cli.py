@@ -11,8 +11,8 @@ import pytest
 
 from scripts.resume import main as resume_main
 from scripts.train import main as train_main
-from src.checkpoint import load_metadata
 from src.paths import CHECKPOINTS_DIR, DATA_DIR
+from src.training.checkpoint import load_metadata
 
 # Enough stories for at least one batch with batch_size=2
 _FAKE_STORIES = "\n".join(
@@ -89,27 +89,20 @@ class TestResumeCliHappyPath:
 
 class TestResumeCliSourceCheckpointResolution:
     """Verifies that --checkpoint-source and its fallback (get_latest_checkpoint)
-    flow correctly into restore_from_checkpoint. Trainer execution is
-    patched so these tests stay fast and don't write real bundles."""
+    flow correctly into the Runner's checkpoint_source kwarg. Trainer
+    execution is patched so these tests stay fast and don't write real bundles."""
 
     @pytest.fixture
     def patched_run(self, data_file: Path):
         """Patches downstream training so only the source-resolution path is exercised."""
 
         def _run(argv: list[str], *, latest: Path | None = None) -> MagicMock:
-            with patch("scripts.resume.restore_from_checkpoint") as mock_build, \
-                 patch("scripts.resume.ResumeContext.from_checkpoint") as mock_from_ckpt, \
-                 patch("scripts.resume.get_latest_checkpoint", return_value=latest), \
-                 patch("scripts.resume.count_params", return_value=0), \
+            with patch("scripts.resume.get_latest_checkpoint", return_value=latest), \
                  patch("scripts.resume.Runner") as mock_runner_cls:
-                mock_build.return_value = (MagicMock(), MagicMock())
-                mock_from_ckpt.return_value = MagicMock(
-                    source=MagicMock(), previous_epochs_completed=3
-                )
                 mock_runner_cls.return_value.run.return_value = None
                 with patch("sys.argv", argv):
                     resume_main()
-                return mock_build
+                return mock_runner_cls
 
         return _run
 
@@ -124,8 +117,8 @@ class TestResumeCliSourceCheckpointResolution:
             "--epochs", "1",
             "--batch-size", "2",
         ]
-        mock_build = patched_run(argv)
-        assert mock_build.call_args.args[0] == explicit_source
+        mock_runner_cls = patched_run(argv)
+        assert mock_runner_cls.call_args.kwargs["checkpoint_source"] == explicit_source
 
     def test_falls_back_to_latest_when_source_omitted(
         self, patched_run, data_file: Path
@@ -137,8 +130,8 @@ class TestResumeCliSourceCheckpointResolution:
             "--epochs", "1",
             "--batch-size", "2",
         ]
-        mock_build = patched_run(argv, latest=latest)
-        assert mock_build.call_args.args[0] == latest
+        mock_runner_cls = patched_run(argv, latest=latest)
+        assert mock_runner_cls.call_args.kwargs["checkpoint_source"] == latest
 
 
 class TestResumeCliErrors:

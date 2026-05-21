@@ -8,7 +8,7 @@ import argparse
 import dataclasses
 from pathlib import Path
 
-from src.checkpoint import default_checkpoint_path
+from src.training.checkpoint import default_checkpoint_path
 from src.config import TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import DEFAULT_DATA_FILE

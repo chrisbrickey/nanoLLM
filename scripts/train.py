@@ -25,7 +25,6 @@ import sys
 
 from src.config import ModelConfig, TokenizerConfig
 from src.logging_setup import setup_logging
-from src.model.model import NanoLLM, count_params
 from src.training.cli import (
     add_shared_training_args,
     build_training_config,
@@ -61,14 +60,11 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        # Load fresh, untrained model from configs
-        logger.info("Building untrained model...")
+        # Construct configs for a fresh, untrained model
         model_config = ModelConfig()
-        model = NanoLLM(model_config)
         tokenizer_config = TokenizerConfig()
-        logger.info(f"Model ready ({count_params(model)} parameters)")
     except Exception as e:
-        logger.error(f"Failed to build untrained model from configs: {e}")
+        logger.error(f"Failed to construct model and tokenizer configs: {e}")
         sys.exit(1)
 
 
@@ -77,7 +73,7 @@ def main() -> None:
 
     try:
         runner = Runner(
-            model=model,
+            model_config=model_config,
             tokenizer_config=tokenizer_config,
             data_source=data_source,
             training_config=training_config,

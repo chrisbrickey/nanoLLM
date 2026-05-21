@@ -1,10 +1,9 @@
-"""Unit tests for src/checkpoint.py — orbax I/O is patched everywhere
+"""Unit tests for src/training/checkpoint.py — orbax I/O is patched everywhere
 save_checkpoint is exercised, so these tests verify path validation,
 metadata.json read/write branches, and error handling without doing real
 weight serialization. Save→load round-trip with real orbax lives in
-tests/integration/test_checkpoint.py."""
+tests/integration/training/test_checkpoint.py."""
 
-import dataclasses
 import json
 import logging
 import os
@@ -16,18 +15,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.checkpoint import (
-    CheckpointMetadata,
+from src.config import TokenizerConfig, TrainingConfig
+from src.model.model import NanoLLM
+from src.paths import CHECKPOINTS_DIR
+from src.training.checkpoint import (
     apply_checkpoint,
-    restore_from_checkpoint,
+    build_and_save_checkpoint,
     get_latest_checkpoint,
     get_latest_checkpoints,
     load_metadata,
+    restore_from_checkpoint,
     save_checkpoint,
 )
-from src.config import TokenizerConfig
-from src.model.model import NanoLLM
-from src.paths import CHECKPOINTS_DIR
+from src.training.schema import CheckpointMetadata
 
 SAMPLE_TOKENIZER_CONFIG: dict[str, object] = {
     "delimiter": "<|endoftext|>",
@@ -77,7 +77,7 @@ def project_checkpoint_path() -> Generator[Path, None, None]:
 def patched_orbax() -> Generator[MagicMock, None, None]:
     """Patches ocp.PyTreeCheckpointer so save_checkpoint does no real weight
     I/O. Yields the mock instance for tests that need to assert on it."""
-    with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
+    with patch("src.training.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
         instance = MagicMock()
         MockCheckpointer.return_value = instance
         yield instance
@@ -91,7 +91,7 @@ class TestSaveCheckpoint:
         patched_orbax: MagicMock,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with caplog.at_level(logging.INFO, logger="src.checkpoint"):
+        with caplog.at_level(logging.INFO, logger="src.training.checkpoint"):
             save_checkpoint(make_tiny_model(), project_checkpoint_path)
 
         patched_orbax.save.assert_called_once()
@@ -138,6 +138,92 @@ class TestSaveCheckpoint:
         with patch("pathlib.Path.mkdir", side_effect=OSError("disk full")):
             with pytest.raises(OSError, match="Failed to create checkpoint directory"):
                 save_checkpoint(make_tiny_model(), some_valid_path)
+
+
+class TestBuildAndSaveCheckpoint:
+    """Verifies that build_and_save_checkpoint assembles CheckpointMetadata
+    from inputs and delegates to save_checkpoint."""
+
+    def test_persists_metadata_with_cumulative_epochs_and_final_loss(
+        self,
+        make_tiny_model: Callable[..., NanoLLM],
+        project_checkpoint_path: Path,
+        patched_orbax: MagicMock,
+    ) -> None:
+        build_and_save_checkpoint(
+            make_tiny_model(),
+            project_checkpoint_path,
+            training_config=TrainingConfig(),
+            tokenizer_config=TokenizerConfig(),
+            cumulative_epochs_completed=7,
+            final_loss=0.42,
+        )
+        loaded = load_metadata(project_checkpoint_path)
+        assert loaded is not None
+        assert loaded.cumulative_epochs_completed == 7
+        assert loaded.final_loss == pytest.approx(0.42)
+
+    def test_persists_model_and_tokenizer_configs_as_dicts(
+        self,
+        make_tiny_model: Callable[..., NanoLLM],
+        project_checkpoint_path: Path,
+        patched_orbax: MagicMock,
+    ) -> None:
+        model = make_tiny_model()
+        tokenizer_config = TokenizerConfig()
+        build_and_save_checkpoint(
+            model,
+            project_checkpoint_path,
+            training_config=TrainingConfig(),
+            tokenizer_config=tokenizer_config,
+            cumulative_epochs_completed=1,
+            final_loss=None,
+        )
+        loaded = load_metadata(project_checkpoint_path)
+        assert loaded is not None
+        assert loaded.model_config is not None
+        assert loaded.model_config["embed_dim"] == model.config.embed_dim
+        assert loaded.tokenizer_config is not None
+        assert loaded.tokenizer_config["delimiter"] == tokenizer_config.delimiter
+
+    def test_persists_training_config_as_dict(
+        self,
+        make_tiny_model: Callable[..., NanoLLM],
+        project_checkpoint_path: Path,
+        patched_orbax: MagicMock,
+    ) -> None:
+        training_config = TrainingConfig(epochs=3, batch_size=8)
+        build_and_save_checkpoint(
+            make_tiny_model(),
+            project_checkpoint_path,
+            training_config=training_config,
+            tokenizer_config=TokenizerConfig(),
+            cumulative_epochs_completed=3,
+            final_loss=None,
+        )
+        loaded = load_metadata(project_checkpoint_path)
+        assert loaded is not None
+        assert loaded.training_config is not None
+        assert loaded.training_config["epochs"] == 3
+        assert loaded.training_config["batch_size"] == 8
+
+    def test_accepts_none_final_loss(
+        self,
+        make_tiny_model: Callable[..., NanoLLM],
+        project_checkpoint_path: Path,
+        patched_orbax: MagicMock,
+    ) -> None:
+        build_and_save_checkpoint(
+            make_tiny_model(),
+            project_checkpoint_path,
+            training_config=TrainingConfig(),
+            tokenizer_config=TokenizerConfig(),
+            cumulative_epochs_completed=0,
+            final_loss=None,
+        )
+        loaded = load_metadata(project_checkpoint_path)
+        assert loaded is not None
+        assert loaded.final_loss is None
 
 
 class TestCheckpointMetadata:
@@ -305,7 +391,7 @@ class TestApplyCheckpoint:
         """Underlying orbax exceptions surface as a single ValueError so callers have one error path."""
         project_checkpoint_path.mkdir(parents=True, exist_ok=True)
         (project_checkpoint_path / "weights.orbax").mkdir()
-        with patch("src.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
+        with patch("src.training.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
             mock_instance = MagicMock()
             mock_instance.restore.side_effect = KeyError("missing tree node")
             MockCheckpointer.return_value = mock_instance
@@ -316,7 +402,7 @@ class TestApplyCheckpoint:
 class TestBuildModelFromCheckpoint:
     """Unit-level tests of restore_from_checkpoint's metadata-validation
     branches. The happy-path case (full reconstruction with real weights) is
-    in tests/integration/test_checkpoint.py."""
+    in tests/integration/training/test_checkpoint.py."""
 
     def test_raises_when_no_metadata(self, project_checkpoint_path: Path) -> None:
         # Bundle has weights.orbax (passes apply_checkpoint's existence check)
