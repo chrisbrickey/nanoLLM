@@ -1,4 +1,4 @@
-"""Unit tests for src/training/schema.py — MetricsHistory and CheckpointMetadata."""
+"""Unit tests for src/training/schema.py"""
 
 from datetime import datetime
 

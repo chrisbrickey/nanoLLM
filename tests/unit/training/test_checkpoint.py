@@ -1,8 +1,10 @@
-"""Unit tests for src/training/checkpoint.py — orbax I/O is patched everywhere
-save_checkpoint is exercised, so these tests verify path validation,
-metadata.json read/write branches, and error handling without doing real
-weight serialization. Save→load round-trip with real orbax lives in
-tests/integration/training/test_checkpoint.py."""
+"""Unit tests for src/training/checkpoint.py
+
+orbax I/O is patched everywhere save_checkpoint is exercised
+so these tests verify path validation, metadata.json read/write branches,
+and error handling without doing real weight serialization.
+
+Save→load round-trip with real orbax lives in integration tests."""
 
 import json
 import logging
@@ -210,7 +212,7 @@ class TestCheckpointMetadata:
         patched_orbax: MagicMock,
     ) -> None:
         """save_checkpoint persists tokenizer_config in metadata.json and
-        load_metadata returns the same dict — exercised without orbax."""
+        load_metadata returns the same dict (exercised without orbax)."""
         metadata = CheckpointMetadata(
             cumulative_epochs_completed=1,
             tokenizer_config=SAMPLE_TOKENIZER_CONFIG_DICT,
@@ -382,7 +384,7 @@ class TestBuildModelFromCheckpoint:
 
     def test_raises_when_no_metadata(self, checkpoint_path: Path) -> None:
         # Bundle has weights.orbax (passes apply_checkpoint's existence check)
-        # but no metadata.json — restore_from_checkpoint must reject early.
+        # but no metadata.json; restore_from_checkpoint must reject early.
         _make_bundle(checkpoint_path.parent, checkpoint_path.name)
         with pytest.raises(ValueError, match="no metadata"):
             restore_from_checkpoint(checkpoint_path)

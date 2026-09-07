@@ -15,12 +15,12 @@ DEFAULT_CHANGE_THRESHOLD: float = 1e-8
 MIN_REPORT_WIDTH: int = 40  # narrower than this breaks the closing-line dash prefix
 
 NORMS_COMPARISON_INTRO: str = (
-    " ANALYSIS 1 — NORMS (magnitude of weights)\n"
+    " ANALYSIS 1: NORMS (magnitude of weights)\n"
     " A shortcut comparison that measures the overall magnitude of each layer's weights, regardless of quality or direction.\n"
 )
 
 STATE_COMPARISON_INTRO: str = (
-    " ANALYSIS 2 — STATE (actual value of all weights)\n"
+    " ANALYSIS 2: STATE (actual value of all weights)\n"
     " Measures actual weight values and reports which fraction changed and by how much.\n"
 )
 

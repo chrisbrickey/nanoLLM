@@ -1,7 +1,7 @@
 """Unit tests for src/training/runner.py
 
-Tests exercise orchestration logic only — no disk access, no tokenization,
-no JAX compilation.
+Tests exercise orchestration logic only.
+No disk access, no tokenization, no JAX compilation.
 """
 
 import logging

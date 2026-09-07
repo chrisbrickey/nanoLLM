@@ -1,6 +1,6 @@
-"""Integration tests for src/training/checkpoint.py — exercises real orbax weight
-serialization. Path-validation, metadata.json handling, and error branches
-are unit-tested in tests/unit/training/test_checkpoint.py with orbax patched."""
+"""Integration tests for src/training/checkpoint.py
+
+Exercises real orbax weight serialization."""
 
 import dataclasses
 import logging
