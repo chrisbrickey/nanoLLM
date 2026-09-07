@@ -1,4 +1,4 @@
-"""Unit tests for StoryDataset — tokenizer is mocked."""
+"""Unit tests for StoryDataset; Tokenizer is mocked."""
 
 from unittest.mock import MagicMock, PropertyMock, patch
 import pytest

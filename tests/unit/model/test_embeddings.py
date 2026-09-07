@@ -47,7 +47,7 @@ class TestTokenAndPositionEmbeddingValues:
     def test_same_token_at_different_positions_differs(
         self, embedding: TokenAndPositionEmbedding
     ) -> None:
-        # Token 1 at position 0 vs token 1 at position 1 — positional encoding distinguishes them
+        # Token 1 at position 0 vs token 1 at position 1. Positional encoding distinguishes them.
         tokens = jnp.array([[1, 1]])
         output = embedding(tokens)
         assert not jnp.allclose(output[0, 0, :], output[0, 1, :])

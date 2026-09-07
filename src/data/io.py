@@ -1,7 +1,7 @@
 """File I/O for loading delimited text from disk.
 
-Pure I/O helpers — no tokenization, no batching. Consumers convert the
-returned raw text blocks into model-ready batches via src.data.processor.
+Pure I/O helpers. No tokenization, no batching.
+Consumers convert the returned raw text blocks into model-ready batches.
 """
 
 import logging

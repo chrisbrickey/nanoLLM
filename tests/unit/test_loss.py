@@ -45,8 +45,8 @@ class TestLossFn:
     def test_gradients_are_nonzero(
         self, make_tiny_model: Callable[..., NanoLLM]
     ) -> None:
-        """cross_entropy_loss must produce nonzero gradients for at least one
-        leaf — a sanity check that the loss flows backward through the model."""
+        """cross_entropy_loss must produce nonzero gradients for at least one leaf.
+        This is a sanity check that the loss flows backward through the model."""
         grad_fn = nnx.value_and_grad(cross_entropy_loss, has_aux=True)
         _outputs, grads = grad_fn(make_tiny_model(), _make_batch())
 
