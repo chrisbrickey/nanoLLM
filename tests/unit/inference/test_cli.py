@@ -1,17 +1,11 @@
 """Unit tests for src/inference/cli.py"""
 
 import argparse
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from src.config import InferenceConfig
-from src.inference.cli import (
-    add_inference_args,
-    build_inference_config,
-    resolve_source_checkpoint,
-)
+from src.inference.cli import add_inference_args, build_inference_config
 
 SAMPLE_PROMPT = "sample-text"
 SAMPLE_CHECKPOINT_PATH = "checkpoints/sample_bundle"
@@ -90,26 +84,3 @@ class TestBuildInferenceConfig:
         with pytest.raises(ValueError):
             build_inference_config(args)
 
-
-class TestResolveSourceCheckpoint:
-    def test_returns_supplied_path(self) -> None:
-        args = _parser_with_inference_args().parse_args(
-            ["--prompt", SAMPLE_PROMPT, "--checkpoint-source", SAMPLE_CHECKPOINT_PATH]
-        )
-        assert resolve_source_checkpoint(args) == Path(SAMPLE_CHECKPOINT_PATH)
-
-    def test_falls_back_to_latest_checkpoint_when_arg_is_none(self) -> None:
-        args = _parser_with_inference_args().parse_args(["--prompt", SAMPLE_PROMPT])
-        latest = Path(SAMPLE_CHECKPOINT_PATH)
-        with patch(
-            "src.inference.cli.get_latest_checkpoint", return_value=latest
-        ) as mock_latest:
-            result = resolve_source_checkpoint(args)
-        assert result == latest
-        mock_latest.assert_called_once()
-
-    def test_raises_file_not_found_when_no_checkpoint_exists(self) -> None:
-        args = _parser_with_inference_args().parse_args(["--prompt", SAMPLE_PROMPT])
-        with patch("src.inference.cli.get_latest_checkpoint", return_value=None):
-            with pytest.raises(FileNotFoundError):
-                resolve_source_checkpoint(args)

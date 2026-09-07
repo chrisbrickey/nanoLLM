@@ -85,7 +85,7 @@ class TestCliHappyPath:
         run_cli: RunCli,
     ) -> None:
         with patch("scripts.generate.complete_prompt", return_value=FIXED_COMPLETION), \
-             patch("src.inference.cli.get_latest_checkpoint", return_value=checkpoint_bundle):
+             patch("src.cli.get_latest_checkpoint", return_value=checkpoint_bundle):
             out = run_cli(_argv())
 
         assert FIXED_COMPLETION in out
@@ -127,7 +127,7 @@ class TestCliErrors:
         run_cli: RunCli,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with patch("src.inference.cli.get_latest_checkpoint", return_value=None):
+        with patch("src.cli.get_latest_checkpoint", return_value=None):
             with pytest.raises(SystemExit) as exc_info:
                 run_cli(_argv())
         _assert_error_exit(exc_info, caplog)

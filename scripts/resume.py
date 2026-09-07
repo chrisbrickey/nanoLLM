@@ -22,11 +22,9 @@ Usage:
 import argparse
 import logging
 import sys
-from pathlib import Path
 
+from src.cli import resolve_source_checkpoint
 from src.logging_setup import setup_logging
-from src.paths import CHECKPOINTS_DIR
-from src.training.checkpoint import get_latest_checkpoint
 from src.training.cli import (
     add_shared_training_args,
     build_training_config,
@@ -71,12 +69,7 @@ def main() -> None:
 
     try:
         # Resolve checkpoint source bundle (defaults to most recent)
-        if args.checkpoint_source:
-            checkpoint_source: Path | None = Path(args.checkpoint_source)
-        else:
-            checkpoint_source = get_latest_checkpoint(CHECKPOINTS_DIR)
-            if checkpoint_source is None:
-                raise FileNotFoundError(f"No checkpoints found in {CHECKPOINTS_DIR}.")
+        checkpoint_source = resolve_source_checkpoint(args)
     except Exception as e:
         logger.error(f"Failed to resolve checkpoint source bundle: {e}")
         sys.exit(1)
