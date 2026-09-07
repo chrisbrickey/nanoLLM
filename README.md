@@ -108,8 +108,10 @@ Two CLI scripts are provided:
 - `nanollm-train` for a fresh start: builds an untrained `NanoLLM(ModelConfig())`, trains for default or specified number of epochs, and persists a new checkpoint bundle.
 - `nanollm-resume` for continued training: loads weights and configs from an existing checkpoint, trains for additional epochs, and persists a new checkpoint bundle.
 
-_The total epochs trained across all training sessions is recorded as `cumulative_epochs_completed` in the checkpoint metadata, regardless of which script is used._
-
+Total Epochs:
+- The default epoch count per each training run is very small to facilitate quick runs with minimal resources so users can get feedback quickly and inexpensively.
+- However, hundreds or thousands of cumulative epochs are required to generate even extremely basic sentences if using the small 1000-story default training subset.
+- The total epochs trained across all training sessions is recorded as `cumulative_epochs_completed` in the checkpoint metadata, regardless of which script is used.
 
 #### Train from scratch
 Use this script the first time you train the model or at the beginning of an experiment. 
@@ -149,9 +151,33 @@ uv run nanollm-resume --epochs 5 --checkpoint-source {checkpoint_directory}/{pri
 | `--checkpoint-source`        | resume only  | Path to the checkpoint bundle to load weights from              | latest bundle in `checkpoints/`    |
 
 
-### Run inference to complete a sentence
-This functionality exists in the notebook `07_run_inference.ipynb`, but has not yet been extracted to `src/`.
+### Run inference
+The inference flow loads a pre-trained model (via checkpoints) and runs inference to complete a phrase provided by the user. 
 
+#### Inference via CLI
+
+Enter the input phrase as part of the CLI command (`--prompt` required). If not specified, the command builds the model using the most recent checkpoint.
+```
+# generate text using defaults (most recent checkpoint)
+uv run nanollm-generate --prompt "I was eating a bowl of raspberries when I noticed that"
+
+# generate text using overrides
+uv run nanollm-generate --prompt "I was eating a bowl of raspberries when I noticed that" --checkpoint-source checkpoints/bundle_X/ --max-new-tokens 100 --temperature 0.8 --seed 42
+```
+
+#### Flags
+
+| Flag                   | Description                             | Default                           |
+|------------------------|-----------------------------------------|-----------------------------------|
+| `--prompt`             | Text prompt to complete (required)      | none                              |
+| `--checkpoint-source`  | Path to checkpoint bundle to load       | latest bundle in `checkpoints/`   |
+| `--max-new-tokens`     | Maximum tokens to generate              | `30`                              |
+| `--temperature`        | Sampling temperature (> 0)              | `0.5`                             |
+| `--seed`               | Random seed for reproducible sampling   | none (non-deterministic)          |
+
+
+#### Inference via UI
+See the last section of `07_run_inference.ipynb`.
 
 ## Development
 

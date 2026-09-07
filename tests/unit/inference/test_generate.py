@@ -1,4 +1,4 @@
-"""Unit tests for generate_text — model and tokenizer are mocked."""
+"""Unit tests for generate_text; model and tokenizer are mocked"""
 
 import logging
 from unittest.mock import MagicMock

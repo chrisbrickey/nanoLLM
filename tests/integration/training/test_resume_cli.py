@@ -1,8 +1,6 @@
 """Integration tests for the resume CLI entry point (scripts/resume.py)."""
 
 import logging
-import shutil
-import uuid
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,34 +11,18 @@ from scripts.resume import main as resume_main
 from scripts.train import main as train_main
 from src.paths import CHECKPOINTS_DIR
 from src.training.checkpoint import load_metadata
-
-
-@pytest.fixture
-def checkpoint_path_factory() -> Generator[list[Path], None, None]:
-    """Yields a list that collects checkpoint paths so the fixture can clean
-    each one up at teardown without callers having to track them."""
-    created: list[Path] = []
-
-    def _new() -> Path:
-        path = CHECKPOINTS_DIR / f"resume_cli_test_{uuid.uuid4().hex[:8]}.orbax"
-        created.append(path)
-        return path
-
-    yield _new  # type: ignore[misc]
-    for path in created:
-        if path.exists():
-            shutil.rmtree(path)
+from tests.conftest import CheckpointPathFactory
 
 
 class TestResumeCliHappyPath:
     def test_train_then_resume_doubles_cumulative_epochs(
-        self, data_file: Path, checkpoint_path_factory
+        self, data_file: Path, checkpoint_path_factory: CheckpointPathFactory
     ) -> None:
         """End-to-end: train one epoch, then resume one more epoch. The
         resulting checkpoint's metadata must record cumulative_epochs_completed
         equal to the sum of both phases."""
-        first_path = checkpoint_path_factory()
-        second_path = checkpoint_path_factory()
+        first_path = checkpoint_path_factory("resume_cli_test_first")
+        second_path = checkpoint_path_factory("resume_cli_test_second")
         epochs_per_phase = 1
 
         train_argv = [

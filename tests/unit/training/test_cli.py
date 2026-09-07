@@ -1,5 +1,4 @@
-"""Unit tests for src/training/cli.py — argparse helpers and config builders
-shared by scripts/train.py and scripts/resume.py."""
+"""Unit tests for src/training/cli.py"""
 
 import argparse
 from pathlib import Path
@@ -111,8 +110,8 @@ class TestResolveDestinationCheckpoint:
     def test_returns_timestamped_default_when_arg_is_none(self) -> None:
         args = _parser_with_shared_args().parse_args([])
         path = resolve_destination_checkpoint(args)
-        # Default is the project-wide default_checkpoint_path("NanoLLM"); just
-        # assert structure — the timestamp itself is verified elsewhere.
+        # Default is the project-wide default_checkpoint_path("NanoLLM")
+        # assert on structure; the timestamp is verified elsewhere
         assert "NanoLLM_" in path.name
 
     def test_returns_supplied_path(self) -> None:
