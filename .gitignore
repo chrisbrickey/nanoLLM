@@ -1,5 +1,5 @@
-# raw data
-/data/
+# training datasets
+data/
 
 # model artifacts
 checkpoints/
@@ -10,6 +10,7 @@ checkpoints/
 # python
 __pycache__/
 .venv/
+.coverage
 
 # jupyter
 .ipynb_checkpoints/
@@ -17,6 +18,15 @@ __pycache__/
 # ide
 .idea/
 
-# coding agents
-.claude/
+# macOS
+.DS_Store
+
+# development workflow
+BACKLOG.md
+
+# agentic platforms (CLAUDE.md is symlinked to AGENTS.md)
+AGENTS.md
 CLAUDE.md
+.claude/
+.codex/
+.vibe/

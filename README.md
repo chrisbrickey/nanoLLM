@@ -39,17 +39,17 @@ I developed the code iteratively, trying out implementations in Jupyter notebook
 This project uses [UV](https://docs.astral.sh/uv/) as the package manager.
 All dependencies are managed via `pyproject.toml` and installed using UV.
 
-| Major Packages       | Purpose                                                              |
-|----------------------|----------------------------------------------------------------------|
-| **python 3.11**      | runtime                                             |
-| **jax**              | High-performance numerical computing and automatic differentiation   |
-| **grain**            | Efficient data loading and preprocessing library for JAX             |
-| **tiktoken**         | Converts input text into tokens (array of ints)                      |
-| **orbax-checkpoint** | Model checkpoint saving, loading, and restoration              |
+| Major Packages       | Purpose                                                            |
+|----------------------|--------------------------------------------------------------------|
+| **python 3.11**      | runtime                                                            |
+| **jax**              | High-performance numerical computing and automatic differentiation |
+| **grain**            | Efficient data loading and preprocessing library for JAX           |
+| **tiktoken**         | Converts input text into tokens (array of ints)                    |
+| **orbax-checkpoint** | Model checkpoint saving, loading, and restoration                  |
 
 
 ### Project Structure
-I'm using notebooks for development and am extracting code to `src/` (with test coverage) as code stabilizes.
+I'm using notebooks for development. As code stabilizes, I extract code to `src/` with test coverage.
 
 ```
 nanoLLM/
@@ -74,7 +74,7 @@ nanoLLM/
 _*I added a git filter to clean the notebooks prior to committing (e.g., removes outputs and execution counts)._
 
 
-## Usage
+## Setup
 
 ### 1. Install dependencies
 
@@ -82,7 +82,25 @@ _*I added a git filter to clean the notebooks prior to committing (e.g., removes
 uv sync
 ```
 
-### 2. Train a model
+### 2. Download training data
+As of 2026, this project defaults to training on a small subset (1000 stories) of a commonly used Hugging Face dataset.
+This allows users to work though the training steps relatively quickly with low resource consumption.
+Outcomes will improve greatly if you use the optional `--data-file` flag on the subsequent CLI commands to train the model on an entire dataset.
+
+Download the entire dataset to a git-ignored `data/` directory.
+```
+mkdir -p data/raw && wget -P data/raw/ https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStories-train.txt
+```
+
+Extract a subset of the first 1000 stories from the dataset to a separate file for expedient training.                                                                                                                                                                        
+```
+awk 'BEGIN{c=0} /<|endoftext|>/{c++} c<1000' data/raw/TinyStories-train.txt > data/raw/TinyStories-1000.txt 
+```
+
+
+## Usage
+
+### Train the model
 Training is a resource-intensive process that is best accomplished across multiple, well-documented phases. 
 NanoLLM training processes are fully integrated with checkpoint persistence to support multi-phase training and experiment reproducibility.
 
@@ -91,6 +109,7 @@ Two CLI scripts are provided:
 - `nanollm-resume` for continued training: loads weights and configs from an existing checkpoint, trains for additional epochs, and persists a new checkpoint bundle.
 
 _The total epochs trained across all training sessions is recorded as `cumulative_epochs_completed` in the checkpoint metadata, regardless of which script is used._
+
 
 #### Train from scratch
 Use this script the first time you train the model or at the beginning of an experiment. 
@@ -106,6 +125,8 @@ uv run nanollm-train --epochs 5 --batch-size 64 --checkpoint-destination path/to
 #### Resume training
 Use this script for subsequent training sessions. If not specified, it uses a utility to discover the most recent checkpoint.
 
+_NB: This project stores a `metadata.json` file within each checkpoint directory that summarizes the training session, including the cumulative epoch count._
+
 ```
 # resume training with default configuration
 uv run nanollm-resume
@@ -116,19 +137,23 @@ uv run nanollm-resume --epochs 5 --checkpoint-source {checkpoint_directory}/{pri
 
 #### Optional Flags
 
-| Flag | Used by      | Description | Default |
-|------|--------------|-------------|---------|
-| `--epochs` | both scripts | Number of epochs to run **in this invocation** (not cumulative) | `3` |
-| `--batch-size` | both scripts | Number of samples per training batch | `32` |
-| `--data-file` | both scripts | Path to the training data file | `data/TinyStories-1000.txt` |
-| `--max-stories` | both scripts | Maximum number of stories to load from the data file | `100` |
-| `--seed` | both scripts | Random seed for reproducibility | `42` |
-| `--shuffle` / `--no-shuffle` | both scripts | Enable or disable dataset shuffling | `False` |
-| `--checkpoint-destination` | both scripts | Path to save the new checkpoint bundle directory | `checkpoints/NanoLLM_{timestamp}/` |
-| `--checkpoint-source` | resume only  | Path to the checkpoint bundle to load weights from | latest bundle in `checkpoints/` |
+| Flag                         | Used by      | Description                                                     | Default                            |
+|------------------------------|--------------|-----------------------------------------------------------------|------------------------------------|
+| `--epochs`                   | both scripts | Number of epochs to run **in this invocation** (not cumulative) | `3`                                |
+| `--batch-size`               | both scripts | Number of samples per training batch                            | `32`                               |
+| `--data-file`                | both scripts | Path to the training data file                                  | `data/raw/TinyStories-1000.txt`    |
+| `--max-stories`              | both scripts | Maximum number of stories to load from the data file            | `100`                              |
+| `--seed`                     | both scripts | Random seed for reproducibility                                 | `42`                               |
+| `--shuffle` / `--no-shuffle` | both scripts | Enable or disable dataset shuffling                             | `False`                            |
+| `--checkpoint-destination`   | both scripts | Path to save the new checkpoint bundle directory                | `checkpoints/NanoLLM_{timestamp}/` |
+| `--checkpoint-source`        | resume only  | Path to the checkpoint bundle to load weights from              | latest bundle in `checkpoints/`    |
 
 
-## Debugging Tools
+### Run inference to complete a sentence
+This functionality exists in the notebook `07_run_inference.ipynb`, but has not yet been extracted to `src/`.
+
+
+## Development
 
 ### Test Suite
 
@@ -139,17 +164,36 @@ uv run pytest
 uv run pytest tests/unit/
 ```
 
+### Jupyter Notebooks
+Existing notebooks document code development and previous experiments.
+
+Open Jupyter in your default browser at `http://localhost:8888`:
+```
+uv run jupyter lab
+
+# alternative interface
+uv run jupyter notebook
+```
+
+Activate the notebook git filters to strip unnecessary information from notebooks before committing:
+```
+# strip outputs and execution counts
+uv run nbstripout --install
+
+# verify the filters are configured
+git config --get filter.nbstripout.clean
+```
+
 ### Checkpoint Diffs
-CLI tool enables detailed comparison of any two training checkpoints to understand parameter changes. 
-By default, the tool uses a utility that automatically selects the two most recent checkpoints. 
-You may pass arguments `--before` and `--after` to compare any two checkpoints.
+A custom CLI tool enables detailed comparison of any two training checkpoints to understand parameter changes. 
+The tool selects the two most recent checkpoints by default, but you can pass arguments `--before` and `--after` to compare any two checkpoints.
 
 ```
 # compare the two most recent checkpoints automatically
 uv run nanollm-compare
 
 # compare specific bundles
-uv run nanollm-compare --before checkpoints/run_A/ --after checkpoints/run_B/
+uv run nanollm-compare --before checkpoints/bundle_A/ --after checkpoints/bundle_B/
 ```
 
 #### Optional Flags
@@ -160,20 +204,38 @@ uv run nanollm-compare --before checkpoints/run_A/ --after checkpoints/run_B/
 | `--after` | Path to the "after" checkpoint bundle | most recent checkpoint |
 | `--threshold` | Minimum absolute difference to count a parameter as changed | `1e-8`                 |
 
+### Benign JAX warnings
 
-### Jupyter Notebooks
-Existing notebooks document code development and previous experiments. 
-The below commands will open Jupyter in your default browser at `http://localhost:8888`.
+#### intrinsics log warning
 
+Training runs log a warning for `cpp_gen_intrinsics.cc`. This issue is relatively harmless and I chose to neither address nor suppress the warning.
+
+The message comes from JAX's C++ layer, which writes straight to stderr and bypasses Python logging. 
+No logging or warnings filter in this codebase intercepts this warning. 
+Resolving the issue would require setting `JAX_PLATFORMS` or `TF_CPP_MIN_LOG_LEVEL` env variables before JAX is imported. 
+That would couple the import order to a single line of output. For now, I've determined that this would be more problematic than the log noise.
+
+If you dislike this noise in the logs, you can silence it in your own shell without changing the codebase:
 ```
-uv run jupyter notebook
-
-# alternative interface
-uv run jupyter lab
+export TF_CPP_MIN_LOG_LEVEL=2
 ```
 
-### Environment / PATH issues
+#### os.fork warning from notebooks
 
+Some notebook cells execute a CLI script through shell magic (e.g., `!uv run nanollm-resume`)
+to demonstrate how the extracted functionality aligns with the original, experimental code in the notebooks.
+This triggers the following warning: 
+`os.fork() is incompatible with multithreaded code, and JAX is multithreaded, so this will likely lead to a deadlock. pid, fd = os.forkpty()`
+
+Regardless of the warning, the script should run to completion and save a valid checkpoint.
+ 
+The deadlock that the warning describes happens when a forked child keeps running Python and touches JAX state.
+But when applying shell magic to run the scripts from the notebooks, the forked child immediately execs `uv`, which replaces the process image.
+So no JAX threads or locks survive into live Python code.
+
+### Environment / PATH tips
+
+Dependency issues can often be corrected by running the following:
 ```
 # Delete the old venv
 rm -rf .venv
