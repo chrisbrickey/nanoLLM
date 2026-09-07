@@ -66,7 +66,7 @@ class TestResumeCliSourceCheckpointResolution:
         """Patches downstream training so only the source-resolution path is exercised."""
 
         def _run(argv: list[str], *, latest: Path | None = None) -> MagicMock:
-            with patch("scripts.resume.get_latest_checkpoint", return_value=latest), \
+            with patch("src.cli.get_latest_checkpoint", return_value=latest), \
                  patch("scripts.resume.Runner") as mock_runner_cls:
                 mock_runner_cls.return_value.run.return_value = None
                 with patch("sys.argv", argv):
@@ -120,7 +120,7 @@ class TestResumeCliErrors:
             "--epochs", "1",
             "--batch-size", "2",
         ]
-        with patch("scripts.resume.get_latest_checkpoint", return_value=None):
+        with patch("src.cli.get_latest_checkpoint", return_value=None):
             with patch("sys.argv", argv):
                 with pytest.raises(SystemExit) as exc_info:
                     resume_main()

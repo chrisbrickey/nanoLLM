@@ -18,11 +18,8 @@ import argparse
 import logging
 import sys
 
-from src.inference.cli import (
-    add_inference_args,
-    build_inference_config,
-    resolve_source_checkpoint,
-)
+from src.cli import resolve_source_checkpoint
+from src.inference.cli import add_inference_args, build_inference_config
 from src.inference.completion import complete_prompt
 from src.logging_setup import setup_logging
 from src.training.checkpoint import restore_from_checkpoint

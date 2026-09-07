@@ -5,14 +5,9 @@ CLI-specific inference utilities shared by scripts.
 """
 
 import argparse
-import dataclasses
-from pathlib import Path
 
+from src.cli import apply_cli_overrides
 from src.config import InferenceConfig
-from src.paths import CHECKPOINTS_DIR
-from src.training.checkpoint import get_latest_checkpoint
-
-_INFERENCE_OVERRIDE_FIELDS = ("max_new_tokens", "temperature", "seed")
 
 
 def add_inference_args(parser: argparse.ArgumentParser) -> None:
@@ -50,24 +45,4 @@ def add_inference_args(parser: argparse.ArgumentParser) -> None:
 
 def build_inference_config(args: argparse.Namespace) -> InferenceConfig:
     """Apply non-None CLI overrides on top of InferenceConfig defaults."""
-    overrides: dict[str, object] = {
-        field: getattr(args, field)
-        for field in _INFERENCE_OVERRIDE_FIELDS
-        if getattr(args, field) is not None
-    }
-    return dataclasses.replace(InferenceConfig(), **overrides)
-
-
-def resolve_source_checkpoint(args: argparse.Namespace) -> Path:
-    """Return the checkpoint path to load, defaulting to the most recent checkpoint.
-
-    Raises:
-        FileNotFoundError: If no checkpoint source is provided and none exists.
-    """
-    if args.checkpoint_source:
-        return Path(args.checkpoint_source)
-
-    latest = get_latest_checkpoint(CHECKPOINTS_DIR)
-    if latest is None:
-        raise FileNotFoundError(f"No checkpoints found in {CHECKPOINTS_DIR}.")
-    return latest
+    return apply_cli_overrides(InferenceConfig(), args)

@@ -5,16 +5,13 @@ CLI-specific training utilities shared by scripts.
 """
 
 import argparse
-import dataclasses
 from pathlib import Path
 
+from src.cli import apply_cli_overrides
 from src.training.checkpoint import default_checkpoint_path
 from src.config import TrainingConfig
 from src.model.model import NanoLLM
 from src.paths import DEFAULT_DATA_FILE
-
-
-_TRAINING_OVERRIDE_FIELDS = ("batch_size", "epochs", "max_stories", "seed", "shuffle")
 
 
 def add_shared_training_args(parser: argparse.ArgumentParser) -> None:
@@ -43,12 +40,7 @@ def add_shared_training_args(parser: argparse.ArgumentParser) -> None:
 
 def build_training_config(args: argparse.Namespace) -> TrainingConfig:
     """Apply non-None CLI overrides on top of TrainingConfig defaults."""
-    overrides: dict[str, object] = {
-        field: getattr(args, field)
-        for field in _TRAINING_OVERRIDE_FIELDS
-        if getattr(args, field) is not None
-    }
-    return dataclasses.replace(TrainingConfig(), **overrides)
+    return apply_cli_overrides(TrainingConfig(), args)
 
 
 def resolve_data_file(args: argparse.Namespace) -> Path:
