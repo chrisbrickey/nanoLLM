@@ -14,19 +14,6 @@ from scripts.train import main
 from src.config import TrainingConfig
 from src.paths import CHECKPOINTS_DIR, DATA_DIR
 
-# Enough stories for at least one batch with batch_size=2
-_FAKE_STORIES = "\n".join(
-    f"Once upon a time story number {i} ended here.<|endoftext|>" for i in range(6)
-)
-
-
-@pytest.fixture
-def data_file() -> Generator[Path, None, None]:
-    path = DATA_DIR / f"cli_test_{uuid.uuid4().hex[:8]}.txt"
-    path.write_text(_FAKE_STORIES, encoding="utf-8")
-    yield path
-    path.unlink(missing_ok=True)
-
 
 @pytest.fixture
 def checkpoint_path() -> Generator[Path, None, None]:
