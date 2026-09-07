@@ -7,16 +7,14 @@ tests/integration/training/test_checkpoint.py."""
 import json
 import logging
 import os
-import shutil
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.config import TokenizerConfig, TrainingConfig
-from src.model.model import NanoLLM
 from src.paths import CHECKPOINTS_DIR
 from src.training.checkpoint import (
     apply_checkpoint,
@@ -28,22 +26,11 @@ from src.training.checkpoint import (
     save_checkpoint,
 )
 from src.training.schema import CheckpointMetadata
-
-SAMPLE_TOKENIZER_CONFIG: dict[str, object] = {
-    "delimiter": "<|endoftext|>",
-    "name": "gpt2",
-    "pad_token_id": 0,
-}
-
-SAMPLE_MODEL_CONFIG_DICT: dict[str, object] = {
-    "maxlen": 4,
-    "vocab_size": 50,
-    "embed_dim": 12,
-    "num_heads": 3,
-    "feed_forward_dim": 16,
-    "num_transformer_blocks": 1,
-    "model_seed": 0,
-}
+from tests.conftest import (
+    SAMPLE_MODEL_CONFIG_DICT,
+    SAMPLE_TOKENIZER_CONFIG_DICT,
+    MakeTinyModel,
+)
 
 
 def _make_bundle(parent: Path, name: str) -> Path:
@@ -63,17 +50,6 @@ def _write_metadata_json(bundle_dir: Path, payload: dict) -> Path:
 
 
 @pytest.fixture
-def project_checkpoint_path() -> Generator[Path, None, None]:
-    """Unique checkpoint bundle path inside the project; cleaned up after the
-    test. Required only when calling save_checkpoint, since save_checkpoint
-    runs validate_project_path which rejects paths outside the project root."""
-    path = CHECKPOINTS_DIR / f"unit_test_{uuid.uuid4().hex[:8]}"
-    yield path
-    if path.exists():
-        shutil.rmtree(path)
-
-
-@pytest.fixture
 def patched_orbax() -> Generator[MagicMock, None, None]:
     """Patches ocp.PyTreeCheckpointer so save_checkpoint does no real weight
     I/O. Yields the mock instance for tests that need to assert on it."""
@@ -86,25 +62,25 @@ def patched_orbax() -> Generator[MagicMock, None, None]:
 class TestSaveCheckpoint:
     def test_calls_orbax_save_with_correct_args(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         with caplog.at_level(logging.INFO, logger="src.training.checkpoint"):
-            save_checkpoint(make_tiny_model(), project_checkpoint_path)
+            save_checkpoint(make_tiny_model(), checkpoint_path)
 
         patched_orbax.save.assert_called_once()
         call = patched_orbax.save.call_args
-        assert call.args[0] == (project_checkpoint_path / "weights.orbax").resolve()
+        assert call.args[0] == (checkpoint_path / "weights.orbax").resolve()
         assert call.kwargs["force"] is True
         assert "Saving checkpoint" in caplog.text
         assert "Checkpoint saved" in caplog.text
 
     def test_writes_metadata_json_when_metadata_provided(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         metadata = CheckpointMetadata(
@@ -113,26 +89,26 @@ class TestSaveCheckpoint:
             model_config={"embed_dim": 12},
             training_config={"epochs": 3},
         )
-        save_checkpoint(make_tiny_model(), project_checkpoint_path, metadata=metadata)
-        assert (project_checkpoint_path / "metadata.json").exists()
+        save_checkpoint(make_tiny_model(), checkpoint_path, metadata=metadata)
+        assert (checkpoint_path / "metadata.json").exists()
 
     def test_does_not_write_metadata_json_when_no_metadata(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
-        save_checkpoint(make_tiny_model(), project_checkpoint_path)
-        assert not (project_checkpoint_path / "metadata.json").exists()
+        save_checkpoint(make_tiny_model(), checkpoint_path)
+        assert not (checkpoint_path / "metadata.json").exists()
 
     def test_rejects_path_outside_project(
-        self, make_tiny_model: Callable[..., NanoLLM]
+        self, make_tiny_model: MakeTinyModel
     ) -> None:
         with pytest.raises(ValueError, match="outside the project root"):
             save_checkpoint(make_tiny_model(), Path("/tmp/outside"))
 
     def test_raises_oserror_when_mkdir_fails(
-        self, make_tiny_model: Callable[..., NanoLLM]
+        self, make_tiny_model: MakeTinyModel
     ) -> None:
         some_valid_path = CHECKPOINTS_DIR / "unit_test_mkdir_fail"
         with patch("pathlib.Path.mkdir", side_effect=OSError("disk full")):
@@ -146,40 +122,40 @@ class TestBuildAndSaveCheckpoint:
 
     def test_persists_metadata_with_cumulative_epochs_and_final_loss(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         build_and_save_checkpoint(
             make_tiny_model(),
-            project_checkpoint_path,
+            checkpoint_path,
             training_config=TrainingConfig(),
             tokenizer_config=TokenizerConfig(),
             cumulative_epochs_completed=7,
             final_loss=0.42,
         )
-        loaded = load_metadata(project_checkpoint_path)
+        loaded = load_metadata(checkpoint_path)
         assert loaded is not None
         assert loaded.cumulative_epochs_completed == 7
         assert loaded.final_loss == pytest.approx(0.42)
 
     def test_persists_model_and_tokenizer_configs_as_dicts(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         model = make_tiny_model()
         tokenizer_config = TokenizerConfig()
         build_and_save_checkpoint(
             model,
-            project_checkpoint_path,
+            checkpoint_path,
             training_config=TrainingConfig(),
             tokenizer_config=tokenizer_config,
             cumulative_epochs_completed=1,
             final_loss=None,
         )
-        loaded = load_metadata(project_checkpoint_path)
+        loaded = load_metadata(checkpoint_path)
         assert loaded is not None
         assert loaded.model_config is not None
         assert loaded.model_config["embed_dim"] == model.config.embed_dim
@@ -188,20 +164,20 @@ class TestBuildAndSaveCheckpoint:
 
     def test_persists_training_config_as_dict(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         training_config = TrainingConfig(epochs=3, batch_size=8)
         build_and_save_checkpoint(
             make_tiny_model(),
-            project_checkpoint_path,
+            checkpoint_path,
             training_config=training_config,
             tokenizer_config=TokenizerConfig(),
             cumulative_epochs_completed=3,
             final_loss=None,
         )
-        loaded = load_metadata(project_checkpoint_path)
+        loaded = load_metadata(checkpoint_path)
         assert loaded is not None
         assert loaded.training_config is not None
         assert loaded.training_config["epochs"] == 3
@@ -209,19 +185,19 @@ class TestBuildAndSaveCheckpoint:
 
     def test_accepts_none_final_loss(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         build_and_save_checkpoint(
             make_tiny_model(),
-            project_checkpoint_path,
+            checkpoint_path,
             training_config=TrainingConfig(),
             tokenizer_config=TokenizerConfig(),
             cumulative_epochs_completed=0,
             final_loss=None,
         )
-        loaded = load_metadata(project_checkpoint_path)
+        loaded = load_metadata(checkpoint_path)
         assert loaded is not None
         assert loaded.final_loss is None
 
@@ -229,22 +205,22 @@ class TestBuildAndSaveCheckpoint:
 class TestCheckpointMetadata:
     def test_tokenizer_config_round_trips_through_json(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         """save_checkpoint persists tokenizer_config in metadata.json and
         load_metadata returns the same dict — exercised without orbax."""
         metadata = CheckpointMetadata(
             cumulative_epochs_completed=1,
-            tokenizer_config=SAMPLE_TOKENIZER_CONFIG,
+            tokenizer_config=SAMPLE_TOKENIZER_CONFIG_DICT,
         )
-        save_checkpoint(make_tiny_model(), project_checkpoint_path, metadata=metadata)
+        save_checkpoint(make_tiny_model(), checkpoint_path, metadata=metadata)
 
-        loaded = load_metadata(project_checkpoint_path)
+        loaded = load_metadata(checkpoint_path)
 
         assert loaded is not None
-        assert loaded.tokenizer_config == SAMPLE_TOKENIZER_CONFIG
+        assert loaded.tokenizer_config == SAMPLE_TOKENIZER_CONFIG_DICT
 
     def test_load_metadata_backward_compat_missing_tokenizer_config(
         self, tmp_path: Path
@@ -269,8 +245,8 @@ class TestCheckpointMetadata:
 
     def test_load_metadata_round_trip(
         self,
-        make_tiny_model: Callable[..., NanoLLM],
-        project_checkpoint_path: Path,
+        make_tiny_model: MakeTinyModel,
+        checkpoint_path: Path,
         patched_orbax: MagicMock,
     ) -> None:
         cumulative_epochs_completed = 5
@@ -283,9 +259,9 @@ class TestCheckpointMetadata:
             model_config=model_config,
             training_config=training_config,
         )
-        save_checkpoint(make_tiny_model(), project_checkpoint_path, metadata=metadata)
+        save_checkpoint(make_tiny_model(), checkpoint_path, metadata=metadata)
 
-        loaded = load_metadata(project_checkpoint_path)
+        loaded = load_metadata(checkpoint_path)
 
         assert loaded is not None
         assert loaded.cumulative_epochs_completed == cumulative_epochs_completed
@@ -365,38 +341,38 @@ class TestGetLatestCheckpoint:
 
 class TestApplyCheckpoint:
     def test_rejects_path_outside_project(
-        self, make_tiny_model: Callable[..., NanoLLM]
+        self, make_tiny_model: MakeTinyModel
     ) -> None:
         with pytest.raises(ValueError, match="outside the project root"):
             apply_checkpoint(make_tiny_model(), Path("/tmp/outside"))
 
     def test_rejects_missing_file(
-        self, make_tiny_model: Callable[..., NanoLLM]
+        self, make_tiny_model: MakeTinyModel
     ) -> None:
         missing_path = CHECKPOINTS_DIR / f"does_not_exist_{uuid.uuid4().hex[:8]}"
         with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
             apply_checkpoint(make_tiny_model(), missing_path)
 
     def test_rejects_bundle_without_weights(
-        self, make_tiny_model: Callable[..., NanoLLM], project_checkpoint_path: Path
+        self, make_tiny_model: MakeTinyModel, checkpoint_path: Path
     ) -> None:
         """Bundle dir exists but weights.orbax/ subdir is absent."""
-        project_checkpoint_path.mkdir(parents=True, exist_ok=True)
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
         with pytest.raises(FileNotFoundError, match="No weights found"):
-            apply_checkpoint(make_tiny_model(), project_checkpoint_path)
+            apply_checkpoint(make_tiny_model(), checkpoint_path)
 
     def test_wraps_orbax_errors_as_value_error(
-        self, make_tiny_model: Callable[..., NanoLLM], project_checkpoint_path: Path
+        self, make_tiny_model: MakeTinyModel, checkpoint_path: Path
     ) -> None:
         """Underlying orbax exceptions surface as a single ValueError so callers have one error path."""
-        project_checkpoint_path.mkdir(parents=True, exist_ok=True)
-        (project_checkpoint_path / "weights.orbax").mkdir()
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
+        (checkpoint_path / "weights.orbax").mkdir()
         with patch("src.training.checkpoint.ocp.PyTreeCheckpointer") as MockCheckpointer:
             mock_instance = MagicMock()
             mock_instance.restore.side_effect = KeyError("missing tree node")
             MockCheckpointer.return_value = mock_instance
             with pytest.raises(ValueError, match="Failed to load checkpoint"):
-                apply_checkpoint(make_tiny_model(), project_checkpoint_path)
+                apply_checkpoint(make_tiny_model(), checkpoint_path)
 
 
 class TestBuildModelFromCheckpoint:
@@ -404,38 +380,38 @@ class TestBuildModelFromCheckpoint:
     branches. The happy-path case (full reconstruction with real weights) is
     in tests/integration/training/test_checkpoint.py."""
 
-    def test_raises_when_no_metadata(self, project_checkpoint_path: Path) -> None:
+    def test_raises_when_no_metadata(self, checkpoint_path: Path) -> None:
         # Bundle has weights.orbax (passes apply_checkpoint's existence check)
         # but no metadata.json — restore_from_checkpoint must reject early.
-        _make_bundle(project_checkpoint_path.parent, project_checkpoint_path.name)
+        _make_bundle(checkpoint_path.parent, checkpoint_path.name)
         with pytest.raises(ValueError, match="no metadata"):
-            restore_from_checkpoint(project_checkpoint_path)
+            restore_from_checkpoint(checkpoint_path)
 
     def test_raises_when_model_config_missing(
-        self, project_checkpoint_path: Path
+        self, checkpoint_path: Path
     ) -> None:
         _write_metadata_json(
-            project_checkpoint_path,
+            checkpoint_path,
             {
                 "cumulative_epochs_completed": 1,
-                "tokenizer_config": SAMPLE_TOKENIZER_CONFIG,
+                "tokenizer_config": SAMPLE_TOKENIZER_CONFIG_DICT,
             },
         )
         with pytest.raises(ValueError, match="model_config"):
-            restore_from_checkpoint(project_checkpoint_path)
+            restore_from_checkpoint(checkpoint_path)
 
     def test_raises_when_tokenizer_config_missing(
-        self, project_checkpoint_path: Path
+        self, checkpoint_path: Path
     ) -> None:
         _write_metadata_json(
-            project_checkpoint_path,
+            checkpoint_path,
             {
                 "cumulative_epochs_completed": 1,
                 "model_config": SAMPLE_MODEL_CONFIG_DICT,
             },
         )
         with pytest.raises(ValueError, match="tokenizer_config"):
-            restore_from_checkpoint(project_checkpoint_path)
+            restore_from_checkpoint(checkpoint_path)
 
     def test_rejects_path_outside_project(self) -> None:
         with pytest.raises(ValueError, match="outside the project root"):

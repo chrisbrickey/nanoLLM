@@ -1,26 +1,16 @@
 """Integration tests for the CLI entry point (scripts/train.py)."""
 
 import logging
-import shutil
-import uuid
 from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from scripts.train import main
 from src.config import TrainingConfig
 from src.paths import CHECKPOINTS_DIR, DATA_DIR
-
-
-@pytest.fixture
-def checkpoint_path() -> Generator[Path, None, None]:
-    path = CHECKPOINTS_DIR / f"cli_test_{uuid.uuid4().hex[:8]}.orbax"
-    yield path
-    if path.exists():
-        shutil.rmtree(path)
 
 
 @pytest.fixture

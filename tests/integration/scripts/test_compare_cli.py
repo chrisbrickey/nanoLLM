@@ -1,11 +1,7 @@
 """Integration tests for scripts/compare_checkpoints.py CLI."""
 
-import dataclasses
 import logging
 import os
-import shutil
-import uuid
-from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,36 +9,7 @@ import pytest
 
 from scripts.compare_checkpoints import main
 from src.compare import DEFAULT_CHANGE_THRESHOLD
-from src.config import ModelConfig, TokenizerConfig
-from src.model.model import NanoLLM
-from src.paths import CHECKPOINTS_DIR
-from src.training.checkpoint import save_checkpoint
-from src.training.schema import CheckpointMetadata
-
-# ---------------------------------------------------------------------------
-# Small model constants to keep tests fast
-# ---------------------------------------------------------------------------
-
-MAXLEN = 4
-VOCAB_SIZE = 50
-EMBED_DIM = 12
-NUM_HEADS = 3
-FF_DIM = 16
-NUM_BLOCKS = 1
-
-
-def _make_model_with_config(seed: int = 0) -> tuple[NanoLLM, ModelConfig]:
-    config = ModelConfig(
-        maxlen=MAXLEN,
-        vocab_size=VOCAB_SIZE,
-        embed_dim=EMBED_DIM,
-        num_heads=NUM_HEADS,
-        feed_forward_dim=FF_DIM,
-        num_transformer_blocks=NUM_BLOCKS,
-        model_seed=seed,
-    )
-    return NanoLLM(config), config
-
+from tests.conftest import CheckpointPathFactory, SaveTinyCheckpoint
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -50,79 +17,47 @@ def _make_model_with_config(seed: int = 0) -> tuple[NanoLLM, ModelConfig]:
 
 
 @pytest.fixture
-def two_checkpoints() -> Generator[tuple[Path, Path], None, None]:
+def two_checkpoints(
+    checkpoint_path_factory: CheckpointPathFactory,
+    save_tiny_checkpoint: SaveTinyCheckpoint,
+) -> tuple[Path, Path]:
     """Save two real checkpoints with different seeds.
 
     Returns (older_path, newer_path) so callers can pass --before/--after
     or rely on mtime ordering.
     """
-    prefix = f"compare_test_{uuid.uuid4().hex[:8]}"
-    path_a = CHECKPOINTS_DIR / f"{prefix}_a"
-    path_b = CHECKPOINTS_DIR / f"{prefix}_b"
-
-    tokenizer_config = TokenizerConfig()
-
-    model_a, config_a = _make_model_with_config(seed=0)
-    metadata_a = CheckpointMetadata(
-        cumulative_epochs_completed=1,
-        model_config=dataclasses.asdict(config_a),
-        tokenizer_config=dataclasses.asdict(tokenizer_config),
+    path_a = save_tiny_checkpoint(
+        checkpoint_path_factory("compare_test_a"), seed=0, cumulative_epochs_completed=1
     )
-    save_checkpoint(model_a, path_a, metadata=metadata_a)
-
-    model_b, config_b = _make_model_with_config(seed=42)
-    metadata_b = CheckpointMetadata(
-        cumulative_epochs_completed=2,
-        model_config=dataclasses.asdict(config_b),
-        tokenizer_config=dataclasses.asdict(tokenizer_config),
+    path_b = save_tiny_checkpoint(
+        checkpoint_path_factory("compare_test_b"), seed=42, cumulative_epochs_completed=2
     )
-    save_checkpoint(model_b, path_b, metadata=metadata_b)
 
     # Ensure path_a is older so mtime-based ordering is deterministic
     os.utime(path_a, (1_000_000, 1_000_000))
     os.utime(path_b, (2_000_000, 2_000_000))
 
-    yield path_a, path_b
-
-    for p in [path_a, path_b]:
-        if p.exists():
-            shutil.rmtree(p)
+    return path_a, path_b
 
 
 @pytest.fixture
-def one_checkpoint() -> Generator[Path, None, None]:
+def one_checkpoint(
+    checkpoint_path_factory: CheckpointPathFactory,
+    save_tiny_checkpoint: SaveTinyCheckpoint,
+) -> Path:
     """Save a single real checkpoint for error-path tests."""
-    prefix = f"compare_test_{uuid.uuid4().hex[:8]}"
-    path = CHECKPOINTS_DIR / f"{prefix}_only"
-
-    tokenizer_config = TokenizerConfig()
-    model, config = _make_model_with_config(seed=0)
-    metadata = CheckpointMetadata(
-        cumulative_epochs_completed=1,
-        model_config=dataclasses.asdict(config),
-        tokenizer_config=dataclasses.asdict(tokenizer_config),
-    )
-    save_checkpoint(model, path, metadata=metadata)
-
-    yield path
-
-    if path.exists():
-        shutil.rmtree(path)
+    return save_tiny_checkpoint(checkpoint_path_factory("compare_test_only"))
 
 
 @pytest.fixture
-def checkpoint_without_metadata() -> Generator[Path, None, None]:
+def checkpoint_without_metadata(
+    checkpoint_path_factory: CheckpointPathFactory,
+    save_tiny_checkpoint: SaveTinyCheckpoint,
+) -> Path:
     """Save a checkpoint bundle with no metadata.json."""
-    prefix = f"compare_test_{uuid.uuid4().hex[:8]}"
-    path = CHECKPOINTS_DIR / f"{prefix}_no_meta"
-
-    model, _ = _make_model_with_config(seed=0)
-    save_checkpoint(model, path)  # no metadata kwarg
-
-    yield path
-
-    if path.exists():
-        shutil.rmtree(path)
+    return save_tiny_checkpoint(
+        checkpoint_path_factory("compare_test_no_meta"), with_metadata=False
+    )
 
 
 # ---------------------------------------------------------------------------

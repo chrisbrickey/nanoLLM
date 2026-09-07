@@ -1,30 +1,24 @@
 """Integration tests for a full training run (src/training/)."""
 
-import dataclasses
 import json
-import shutil
-import uuid
-from collections.abc import Generator, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
-import pytest
 
-from src.config import ModelConfig, TokenizerConfig, TrainingConfig
+from src.config import ModelConfig, TrainingConfig
 from src.model.model import NanoLLM
-from src.paths import CHECKPOINTS_DIR
-from src.training.checkpoint import save_checkpoint
 from src.training.runner import Runner
-from src.training.schema import CheckpointMetadata
 from src.training.trainer import Trainer
+from tests.conftest import (
+    SAMPLE_TOKENIZER_CONFIG,
+    SAMPLE_TOKENIZER_CONFIG_DICT,
+    CheckpointPathFactory,
+    SaveTinyCheckpoint,
+)
 
 SAMPLE_DATA_SOURCE = Path("/fake/data/stories.txt")
-SAMPLE_TOKENIZER_CONFIG = TokenizerConfig(
-    delimiter="<|endoftext|>",
-    name="gpt2",
-    pad_token_id=0,
-)
 
 # Small enough to run fast; large enough that loss reliably trends down.
 MAXLEN = 8
@@ -49,14 +43,6 @@ class _FakeDataLoader:
     def __iter__(self) -> Iterator[np.ndarray]:
         for _ in range(self.n_batches):
             yield np.ones((self.maxlen, self.batch_size), dtype=np.int32)
-
-
-@pytest.fixture
-def project_checkpoint_destination() -> Generator[Path, None, None]:
-    path = CHECKPOINTS_DIR / f"integration_test_{uuid.uuid4().hex[:8]}"
-    yield path
-    if path.exists():
-        shutil.rmtree(path)
 
 
 def _make_model_config() -> ModelConfig:
@@ -143,59 +129,54 @@ class TestRunnerCheckpointOnDisk:
     """End-to-end verification that runner.run writes a checkpoint bundle
     containing the expected metadata."""
 
-    def test_checkpoint_written_to_disk(self, project_checkpoint_destination: Path) -> None:
-        _run_with_patched_data(checkpoint_destination=project_checkpoint_destination)
-        assert project_checkpoint_destination.exists()
-        assert (project_checkpoint_destination / "weights.orbax").exists()
-        assert (project_checkpoint_destination / "metadata.json").exists()
+    def test_checkpoint_written_to_disk(self, checkpoint_path: Path) -> None:
+        _run_with_patched_data(checkpoint_destination=checkpoint_path)
+        assert checkpoint_path.exists()
+        assert (checkpoint_path / "weights.orbax").exists()
+        assert (checkpoint_path / "metadata.json").exists()
 
     def test_tokenizer_config_written_to_metadata_json(
-        self, project_checkpoint_destination: Path
+        self, checkpoint_path: Path
     ) -> None:
-        _run_with_patched_data(checkpoint_destination=project_checkpoint_destination)
-        saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
-        assert saved["tokenizer_config"] == dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG)
+        _run_with_patched_data(checkpoint_destination=checkpoint_path)
+        saved = json.loads((checkpoint_path / "metadata.json").read_text(encoding="utf-8"))
+        assert saved["tokenizer_config"] == SAMPLE_TOKENIZER_CONFIG_DICT
 
     def test_final_loss_written_to_metadata_json(
-        self, project_checkpoint_destination: Path
+        self, checkpoint_path: Path
     ) -> None:
-        _run_with_patched_data(checkpoint_destination=project_checkpoint_destination)
-        saved = json.loads((project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8"))
+        _run_with_patched_data(checkpoint_destination=checkpoint_path)
+        saved = json.loads((checkpoint_path / "metadata.json").read_text(encoding="utf-8"))
         final_loss = saved["final_loss"]
         assert isinstance(final_loss, float)
         assert final_loss > 0.0
         assert final_loss < float("inf")
 
     def test_prior_epochs_carry_forward_via_checkpoint_source(
-        self, project_checkpoint_destination: Path
+        self,
+        checkpoint_path: Path,
+        checkpoint_path_factory: CheckpointPathFactory,
+        save_tiny_checkpoint: SaveTinyCheckpoint,
     ) -> None:
         """When a source checkpoint records cumulative_epochs_completed=10
         and training adds EPOCHS, metadata.json on disk must record
         cumulative_epochs_completed=10+EPOCHS."""
         prior_epochs = 10
-        prior_source = CHECKPOINTS_DIR / f"integration_prior_{uuid.uuid4().hex[:8]}"
-        try:
-            seed_model = _make_model()
-            save_checkpoint(
-                seed_model,
-                prior_source,
-                metadata=CheckpointMetadata(
-                    cumulative_epochs_completed=prior_epochs,
-                    model_config=dataclasses.asdict(seed_model.config),
-                    tokenizer_config=dataclasses.asdict(SAMPLE_TOKENIZER_CONFIG),
-                ),
-            )
-            _run_with_patched_data(
-                checkpoint_destination=project_checkpoint_destination,
-                checkpoint_source=prior_source,
-            )
-            saved = json.loads(
-                (project_checkpoint_destination / "metadata.json").read_text(encoding="utf-8")
-            )
-            assert saved["cumulative_epochs_completed"] == prior_epochs + EPOCHS
-        finally:
-            if prior_source.exists():
-                shutil.rmtree(prior_source)
+        # The seed bundle's weights must match the model this run trains, so it
+        # is saved from this module's config rather than the default tiny one.
+        prior_source = save_tiny_checkpoint(
+            checkpoint_path_factory("integration_prior"),
+            cumulative_epochs_completed=prior_epochs,
+            model_config=_make_model_config(),
+        )
+        _run_with_patched_data(
+            checkpoint_destination=checkpoint_path,
+            checkpoint_source=prior_source,
+        )
+        saved = json.loads(
+            (checkpoint_path / "metadata.json").read_text(encoding="utf-8")
+        )
+        assert saved["cumulative_epochs_completed"] == prior_epochs + EPOCHS
 
     def test_no_destination_skips_persistence(self, tmp_path: Path) -> None:
         """When checkpoint_destination is None, no bundle is written."""
