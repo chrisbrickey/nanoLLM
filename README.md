@@ -165,19 +165,29 @@ uv run nanollm-generate --prompt "I was eating a bowl of raspberries when I noti
 uv run nanollm-generate --prompt "I was eating a bowl of raspberries when I noticed that" --checkpoint-source checkpoints/bundle_X/ --max-new-tokens 100 --temperature 0.8 --seed 42
 ```
 
-#### Flags
+| Flag                   | Description                             | Default                         |
+|------------------------|-----------------------------------------|---------------------------------|
+| `--prompt`             | Text prompt to complete (required)      | REQUIRED (no default)           |
+| `--checkpoint-source`  | Path to checkpoint bundle to load       | latest bundle in `checkpoints/` |
+| `--max-new-tokens`     | Maximum tokens to generate              | `30`                            |
+| `--temperature`        | Sampling temperature (> 0)              | `0.5`                           |
+| `--seed`               | Random seed for reproducible sampling   | none (non-deterministic)        |
+
+
+#### Inference via web demo
+Launch a light webapp locally and view in browser. It includes a prompt field and sliders to tune max tokens and temperature. The demo loads the most recent checkpoint by default.
+
+```
+# launch the demo using defaults (most recent checkpoint)
+uv run nanollm-demo
+
+# launch the demo with a specific checkpoint
+uv run nanollm-demo --checkpoint-source checkpoints/bundle_X/
+```
 
 | Flag                   | Description                             | Default                           |
 |------------------------|-----------------------------------------|-----------------------------------|
-| `--prompt`             | Text prompt to complete (required)      | none                              |
 | `--checkpoint-source`  | Path to checkpoint bundle to load       | latest bundle in `checkpoints/`   |
-| `--max-new-tokens`     | Maximum tokens to generate              | `30`                              |
-| `--temperature`        | Sampling temperature (> 0)              | `0.5`                             |
-| `--seed`               | Random seed for reproducible sampling   | none (non-deterministic)          |
-
-
-#### Inference via UI
-See the last section of `07_run_inference.ipynb`.
 
 ## Development
 

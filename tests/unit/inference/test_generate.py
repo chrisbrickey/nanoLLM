@@ -25,7 +25,8 @@ def _logits_for_token(token_id: int) -> np.ndarray:
 
 
 @pytest.fixture
-def mock_model() -> MagicMock:
+def stub_model() -> MagicMock:
+    """A model whose forward pass returns fixed logits; distinct from the bare conftest mock."""
     model = MagicMock()
     model.maxlen = MAXLEN
     model.return_value = _logits_for_token(NEXT_TOKEN)
@@ -45,45 +46,45 @@ def mock_tokenizer_config() -> MagicMock:
 
 class TestGenerateTextStopping:
     def test_stops_at_end_token(
-        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock, caplog: pytest.LogCaptureFixture
+        self, stub_model: MagicMock, mock_tokenizer_config: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
-        mock_model.return_value = _logits_for_token(END_TOKEN_ID)
+        stub_model.return_value = _logits_for_token(END_TOKEN_ID)
 
         with caplog.at_level(logging.INFO, logger="src.inference.generate"):
             generate_text(
-                model=mock_model,
+                model=stub_model,
                 tokenizer_config=mock_tokenizer_config,
                 inference_config=InferenceConfig(max_new_tokens=10, seed=SEED),
                 start_tokens=START_TOKENS,
             )
 
-        assert mock_model.call_count == 1
+        assert stub_model.call_count == 1
         assert "stopped at end token" in caplog.text
 
     def test_generates_up_to_max_new_tokens(
-        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock, caplog: pytest.LogCaptureFixture
+        self, stub_model: MagicMock, mock_tokenizer_config: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         max_new = 5
         with caplog.at_level(logging.INFO, logger="src.inference.generate"):
             generate_text(
-                model=mock_model,
+                model=stub_model,
                 tokenizer_config=mock_tokenizer_config,
                 inference_config=InferenceConfig(max_new_tokens=max_new, seed=SEED),
                 start_tokens=START_TOKENS,
             )
 
-        assert mock_model.call_count == max_new
+        assert stub_model.call_count == max_new
         assert "Generation complete" in caplog.text
         assert "stopped at end token" not in caplog.text
 
 
 class TestGenerateTextOutput:
     def test_returns_decoded_string(
-        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock, caplog: pytest.LogCaptureFixture
+        self, stub_model: MagicMock, mock_tokenizer_config: MagicMock, caplog: pytest.LogCaptureFixture
     ) -> None:
         with caplog.at_level(logging.INFO, logger="src.inference.generate"):
             result = generate_text(
-                model=mock_model,
+                model=stub_model,
                 tokenizer_config=mock_tokenizer_config,
                 inference_config=InferenceConfig(max_new_tokens=3, seed=SEED),
                 start_tokens=START_TOKENS,
@@ -94,11 +95,11 @@ class TestGenerateTextOutput:
         assert "Generating text" in caplog.text
 
     def test_decode_receives_start_tokens_plus_generated(
-        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock
+        self, stub_model: MagicMock, mock_tokenizer_config: MagicMock
     ) -> None:
         max_new = 3
         generate_text(
-            model=mock_model,
+            model=stub_model,
             tokenizer_config=mock_tokenizer_config,
             inference_config=InferenceConfig(max_new_tokens=max_new, seed=SEED),
             start_tokens=START_TOKENS,
@@ -111,26 +112,26 @@ class TestGenerateTextOutput:
 
 class TestGenerateTextPadding:
     def test_pads_short_context_to_maxlen(
-        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock
+        self, stub_model: MagicMock, mock_tokenizer_config: MagicMock
     ) -> None:
         generate_text(
-            model=mock_model,
+            model=stub_model,
             tokenizer_config=mock_tokenizer_config,
             inference_config=InferenceConfig(max_new_tokens=1, seed=SEED),
             start_tokens=START_TOKENS,  # len 3 < MAXLEN 10
         )
 
-        call_args = mock_model.call_args[0][0]
+        call_args = stub_model.call_args[0][0]
         assert call_args.shape == (1, MAXLEN)
 
 
 class TestGenerateTextValidation:
     def test_rejects_empty_start_tokens(
-        self, mock_model: MagicMock, mock_tokenizer_config: MagicMock
+        self, stub_model: MagicMock, mock_tokenizer_config: MagicMock
     ) -> None:
         with pytest.raises(ValueError, match="start_tokens"):
             generate_text(
-                model=mock_model,
+                model=stub_model,
                 tokenizer_config=mock_tokenizer_config,
                 inference_config=InferenceConfig(max_new_tokens=5, seed=SEED),
                 start_tokens=[],

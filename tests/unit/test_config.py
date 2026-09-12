@@ -3,8 +3,13 @@
 import pytest
 
 from src.config import (
+    MIN_NEW_TOKENS,
+    MIN_TEMPERATURE_EXCLUSIVE,
+    RECOMMENDED_NEW_TOKENS,
+    RECOMMENDED_TEMPERATURE,
     InferenceConfig,
     ModelConfig,
+    ParamRange,
     TokenizerConfig,
     TrainingConfig,
 )
@@ -145,6 +150,52 @@ class TestTrainingConfig:
             TrainingConfig(**kwargs)
 
 
+class TestParamRange:
+    """Test suite for the ParamRange value object"""
+
+    def test_contains_value_inside_range(self) -> None:
+        param_range = ParamRange(minimum=0.1, maximum=2.0)
+        assert param_range.contains(1.0) is True
+
+    @pytest.mark.parametrize("value", [0.1, 2.0])
+    def test_contains_is_inclusive_of_boundaries(self, value: float) -> None:
+        param_range = ParamRange(minimum=0.1, maximum=2.0)
+        assert param_range.contains(value) is True
+
+    @pytest.mark.parametrize("value", [0.09, 2.01])
+    def test_contains_excludes_values_outside_range(self, value: float) -> None:
+        param_range = ParamRange(minimum=0.1, maximum=2.0)
+        assert param_range.contains(value) is False
+
+
+class TestInferenceConstants:
+    """Test suite for the concrete inference-domain constants"""
+
+    def test_min_new_tokens_value(self) -> None:
+        assert MIN_NEW_TOKENS == 1
+
+    def test_min_temperature_exclusive_value(self) -> None:
+        assert MIN_TEMPERATURE_EXCLUSIVE == 0.0
+
+    def test_recommended_temperature_values(self) -> None:
+        assert RECOMMENDED_TEMPERATURE.minimum == 0.1
+        assert RECOMMENDED_TEMPERATURE.maximum == 2.0
+
+    def test_recommended_new_tokens_values(self) -> None:
+        assert RECOMMENDED_NEW_TOKENS.minimum == 1
+        assert RECOMMENDED_NEW_TOKENS.maximum == 200
+
+    def test_recommended_temperature_stays_within_hard_limits(self) -> None:
+        """This prevents a regression where the recommended band is set to inappropriate values."""
+        assert RECOMMENDED_TEMPERATURE.minimum > MIN_TEMPERATURE_EXCLUSIVE
+        assert RECOMMENDED_TEMPERATURE.maximum > RECOMMENDED_TEMPERATURE.minimum
+
+    def test_recommended_new_tokens_stays_within_hard_limits(self) -> None:
+        """This prevents a regression where the recommended band is set to inappropriate values."""
+        assert RECOMMENDED_NEW_TOKENS.minimum >= MIN_NEW_TOKENS
+        assert RECOMMENDED_NEW_TOKENS.maximum > RECOMMENDED_NEW_TOKENS.minimum
+
+
 class TestInferenceConfig:
     """Test suite for InferenceConfig dataclass"""
 
@@ -154,6 +205,15 @@ class TestInferenceConfig:
         assert config.max_new_tokens > 0
         assert config.temperature > 0.0
         assert config.seed is None
+
+    def test_accepts_temperature_outside_recommended_range(self) -> None:
+        """RECOMMENDED_TEMPERATURE is a recommendation, not a hard limit; the CLI is a research surface."""
+        out_of_range_temperature = 5.0
+        assert not RECOMMENDED_TEMPERATURE.contains(out_of_range_temperature)
+
+        config = InferenceConfig(temperature=out_of_range_temperature)
+
+        assert config.temperature == out_of_range_temperature
 
     def test_custom_values(self) -> None:
         max_new_tokens, temperature, seed = 10, 0.5, 42
