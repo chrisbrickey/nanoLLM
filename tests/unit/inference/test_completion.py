@@ -9,19 +9,7 @@ import pytest
 
 from src.config import InferenceConfig, TokenizerConfig
 from src.inference.completion import complete_prompt
-
-SAMPLE_PROMPT = "sample-text"
-GENERATED_TEXT = "sample-text and then more words"
-
-
-@pytest.fixture
-def mock_model() -> MagicMock:
-    return MagicMock()
-
-
-@pytest.fixture
-def tokenizer_config() -> TokenizerConfig:
-    return TokenizerConfig()
+from tests.conftest import SAMPLE_COMPLETION, SAMPLE_PROMPT
 
 
 @pytest.fixture
@@ -37,7 +25,7 @@ class TestCompletePromptHappyPath:
         inference_config: InferenceConfig,
     ) -> None:
         with patch(
-            "src.inference.completion.generate_text", return_value=GENERATED_TEXT
+            "src.inference.completion.generate_text", return_value=SAMPLE_COMPLETION
         ) as mock_generate:
             result = complete_prompt(
                 model=mock_model,
@@ -46,7 +34,7 @@ class TestCompletePromptHappyPath:
                 prompt=SAMPLE_PROMPT,
             )
 
-        assert result == GENERATED_TEXT
+        assert result == SAMPLE_COMPLETION
         mock_generate.assert_called_once()
 
     def test_encodes_prompt_and_passes_as_start_tokens(
@@ -58,7 +46,7 @@ class TestCompletePromptHappyPath:
         expected_tokens = tokenizer_config.tokenizer.encode(SAMPLE_PROMPT)
 
         with patch(
-            "src.inference.completion.generate_text", return_value=GENERATED_TEXT
+            "src.inference.completion.generate_text", return_value=SAMPLE_COMPLETION
         ) as mock_generate:
             complete_prompt(
                 model=mock_model,
@@ -75,30 +63,18 @@ class TestCompletePromptHappyPath:
 
 
 class TestCompletePromptValidation:
-    def test_empty_prompt_raises_value_error(
+    @pytest.mark.parametrize("prompt", ["", "   "])
+    def test_unusable_prompt_raises_value_error(
         self,
         mock_model: MagicMock,
         tokenizer_config: TokenizerConfig,
         inference_config: InferenceConfig,
+        prompt: str,
     ) -> None:
         with pytest.raises(ValueError, match="prompt"):
             complete_prompt(
                 model=mock_model,
                 tokenizer_config=tokenizer_config,
                 inference_config=inference_config,
-                prompt="",
-            )
-
-    def test_whitespace_only_prompt_raises_value_error(
-        self,
-        mock_model: MagicMock,
-        tokenizer_config: TokenizerConfig,
-        inference_config: InferenceConfig,
-    ) -> None:
-        with pytest.raises(ValueError, match="prompt"):
-            complete_prompt(
-                model=mock_model,
-                tokenizer_config=tokenizer_config,
-                inference_config=inference_config,
-                prompt="   ",
+                prompt=prompt,
             )

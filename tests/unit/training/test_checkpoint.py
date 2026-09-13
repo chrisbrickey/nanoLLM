@@ -9,7 +9,6 @@ Save→load round-trip with real orbax lives in integration tests."""
 import json
 import logging
 import os
-import uuid
 from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -349,11 +348,10 @@ class TestApplyCheckpoint:
             apply_checkpoint(make_tiny_model(), Path("/tmp/outside"))
 
     def test_rejects_missing_file(
-        self, make_tiny_model: MakeTinyModel
+        self, make_tiny_model: MakeTinyModel, missing_checkpoint_path: Path
     ) -> None:
-        missing_path = CHECKPOINTS_DIR / f"does_not_exist_{uuid.uuid4().hex[:8]}"
         with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
-            apply_checkpoint(make_tiny_model(), missing_path)
+            apply_checkpoint(make_tiny_model(), missing_checkpoint_path)
 
     def test_rejects_bundle_without_weights(
         self, make_tiny_model: MakeTinyModel, checkpoint_path: Path

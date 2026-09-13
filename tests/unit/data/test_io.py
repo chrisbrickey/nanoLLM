@@ -1,7 +1,6 @@
 """Unit tests for src/data/io.py"""
 
 import logging
-from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import mock_open, patch
 import pytest
@@ -18,10 +17,8 @@ SAMPLE_STORY_3 = "Third test story goes here."
 class TestLoadStoriesFromFile:
     """Test suite for load_text_from_file utility function"""
 
-    @pytest.fixture(autouse=True)
-    def _capture_logs(self, caplog: pytest.LogCaptureFixture) -> Generator[None, None, None]:
-        with caplog.at_level(logging.INFO, logger="src.data.io"):
-            yield
+    CAPTURED_LOGGER = "src.data.io"
+    CAPTURED_LEVEL = logging.INFO
 
     def test_load_single_story_with_delimiter(self, caplog):
         """Test loading a single story that ends with delimiter"""

@@ -7,4 +7,6 @@ scripts/generate.py (CLI entry point)
 -> cli.py (flags to typed configs)
 -> completion.py (prompt to completion)
 -> generate.py (token-by-token sampling loop)
+
+A web demo follows the same shape, with CLI entry point at scripts/demo.py
 """

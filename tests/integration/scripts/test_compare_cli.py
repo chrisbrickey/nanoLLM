@@ -1,6 +1,5 @@
 """Integration tests for scripts/compare_checkpoints.py CLI."""
 
-import logging
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +8,22 @@ import pytest
 
 from scripts.compare_checkpoints import main
 from src.compare import DEFAULT_CHANGE_THRESHOLD
-from tests.conftest import CheckpointPathFactory, SaveTinyCheckpoint
+from tests.conftest import (
+    CheckpointPathFactory,
+    MakeRunCli,
+    RunCli,
+    SaveTinyCheckpoint,
+    assert_error_exit,
+)
+
+PROG = "nanollm-compare"
+LOGGER_NAME = "scripts.compare_checkpoints"
+
+
+@pytest.fixture
+def run_cli(make_run_cli: MakeRunCli) -> RunCli:
+    """Run the compare CLI and return everything it printed."""
+    return make_run_cli(main, PROG)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -69,23 +83,18 @@ class TestCliHappyPath:
     def test_explicit_before_after_prints_both_reports(
         self,
         two_checkpoints: tuple[Path, Path],
-        capsys: pytest.CaptureFixture[str],
+        run_cli: RunCli,
     ) -> None:
         path_a, path_b = two_checkpoints
-        with patch(
-            "sys.argv",
-            ["nanollm-compare", "--before", str(path_a), "--after", str(path_b)],
-        ):
-            main()
+        out = run_cli(["--before", str(path_a), "--after", str(path_b)])
 
-        out = capsys.readouterr().out
         assert "WEIGHT MAGNITUDE" in out
         assert "STATE COMPARISON" in out
 
     def test_default_invocation_uses_two_most_recent_and_prints_both_reports(
         self,
         two_checkpoints: tuple[Path, Path],
-        capsys: pytest.CaptureFixture[str],
+        run_cli: RunCli,
     ) -> None:
         """No --before/--after: CLI picks the two most recent checkpoints by mtime.
 
@@ -95,14 +104,12 @@ class TestCliHappyPath:
         """
         path_a, path_b = two_checkpoints
         # newest-first matches the real return order of get_latest_checkpoints
-        with patch("sys.argv", ["nanollm-compare"]):
-            with patch(
-                "scripts.compare_checkpoints.get_latest_checkpoints",
-                return_value=[path_b, path_a],
-            ):
-                main()
+        with patch(
+            "scripts.compare_checkpoints.get_latest_checkpoints",
+            return_value=[path_b, path_a],
+        ):
+            out = run_cli()
 
-        out = capsys.readouterr().out
         assert "WEIGHT MAGNITUDE" in out
         assert "STATE COMPARISON" in out
 
@@ -113,66 +120,47 @@ class TestCliHappyPath:
 
 
 class TestCliErrors:
+    CAPTURED_LOGGER = LOGGER_NAME
+
     def test_fewer_than_two_checkpoints_exits_1(
         self,
         one_checkpoint: Path,
+        run_cli: RunCli,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """When fewer than 2 checkpoints exist and no paths are given, CLI must exit 1."""
-        with caplog.at_level(logging.ERROR, logger="scripts.compare_checkpoints"):
-            with patch("sys.argv", ["nanollm-compare"]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert any(r.levelno == logging.ERROR for r in caplog.records)
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli()
+        assert_error_exit(exc_info, caplog)
 
-    def test_only_before_without_after_exits_1(
+    @pytest.mark.parametrize("flag", ["--before", "--after"])
+    def test_one_bundle_flag_without_the_other_exits_1(
         self,
         two_checkpoints: tuple[Path, Path],
+        run_cli: RunCli,
         caplog: pytest.LogCaptureFixture,
+        flag: str,
     ) -> None:
         path_a, _ = two_checkpoints
-        with caplog.at_level(logging.ERROR, logger="scripts.compare_checkpoints"):
-            with patch("sys.argv", ["nanollm-compare", "--before", str(path_a)]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert any(r.levelno == logging.ERROR for r in caplog.records)
-
-    def test_only_after_without_before_exits_1(
-        self,
-        two_checkpoints: tuple[Path, Path],
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        _, path_b = two_checkpoints
-        with caplog.at_level(logging.ERROR, logger="scripts.compare_checkpoints"):
-            with patch("sys.argv", ["nanollm-compare", "--after", str(path_b)]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert any(r.levelno == logging.ERROR for r in caplog.records)
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli([flag, str(path_a)])
+        assert_error_exit(exc_info, caplog)
 
     def test_bundle_missing_metadata_exits_1_and_logs_path(
         self,
         checkpoint_without_metadata: Path,
         two_checkpoints: tuple[Path, Path],
+        run_cli: RunCli,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """If --before refers to a bundle without metadata, CLI must exit 1 and log the path."""
         _, path_b = two_checkpoints
-        with caplog.at_level(logging.ERROR, logger="scripts.compare_checkpoints"):
-            with patch(
-                "sys.argv",
-                [
-                    "nanollm-compare",
-                    "--before", str(checkpoint_without_metadata),
-                    "--after", str(path_b),
-                ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-        assert exc_info.value.code == 1
-        assert any(r.levelno == logging.ERROR for r in caplog.records)
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli([
+                "--before", str(checkpoint_without_metadata),
+                "--after", str(path_b),
+            ])
+        assert_error_exit(exc_info, caplog)
         # The logged error must mention the problematic bundle path
         assert str(checkpoint_without_metadata) in caplog.text
 
@@ -186,92 +174,55 @@ class TestCliFlags:
     def test_threshold_flag_propagates_to_formatted_output(
         self,
         two_checkpoints: tuple[Path, Path],
-        capsys: pytest.CaptureFixture[str],
+        run_cli: RunCli,
     ) -> None:
         path_a, path_b = two_checkpoints
         custom_threshold = 1e-6
-        with patch(
-            "sys.argv",
-            [
-                "nanollm-compare",
-                "--before", str(path_a),
-                "--after", str(path_b),
-                "--threshold", str(custom_threshold),
-            ],
-        ):
-            main()
+        out = run_cli([
+            "--before", str(path_a),
+            "--after", str(path_b),
+            "--threshold", str(custom_threshold),
+        ])
 
-        out = capsys.readouterr().out
         assert "1e-06" in out or "1e-6" in out or "0.000001" in out
 
     def test_omitting_threshold_uses_default(
         self,
         two_checkpoints: tuple[Path, Path],
-        capsys: pytest.CaptureFixture[str],
+        run_cli: RunCli,
     ) -> None:
         path_a, path_b = two_checkpoints
-        with patch(
-            "sys.argv",
-            ["nanollm-compare", "--before", str(path_a), "--after", str(path_b)],
-        ):
-            main()
+        out = run_cli(["--before", str(path_a), "--after", str(path_b)])
 
-        out = capsys.readouterr().out
         default_str = str(DEFAULT_CHANGE_THRESHOLD)
         assert default_str in out or "1e-08" in out or "1e-8" in out
 
-    def test_threshold_zero_exits_2(
+    @pytest.mark.parametrize("threshold", ["0", "-0.5"])
+    def test_non_positive_threshold_exits_2(
         self,
         two_checkpoints: tuple[Path, Path],
+        run_cli: RunCli,
+        threshold: str,
     ) -> None:
-        """--threshold 0 is invalid; argparse must exit with code 2."""
+        """A threshold of zero or below is invalid; argparse must exit with code 2."""
         path_a, path_b = two_checkpoints
-        with patch(
-            "sys.argv",
-            [
-                "nanollm-compare",
+        with pytest.raises(SystemExit) as exc_info:
+            run_cli([
                 "--before", str(path_a),
                 "--after", str(path_b),
-                "--threshold", "0",
-            ],
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-        assert exc_info.value.code == 2
-
-    def test_threshold_negative_exits_2(
-        self,
-        two_checkpoints: tuple[Path, Path],
-    ) -> None:
-        """--threshold -0.5 is invalid; argparse must exit with code 2."""
-        path_a, path_b = two_checkpoints
-        with patch(
-            "sys.argv",
-            [
-                "nanollm-compare",
-                "--before", str(path_a),
-                "--after", str(path_b),
-                "--threshold", "-0.5",
-            ],
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                main()
+                "--threshold", threshold,
+            ])
         assert exc_info.value.code == 2
 
     def test_threshold_positive_succeeds(
         self,
         two_checkpoints: tuple[Path, Path],
-        capsys: pytest.CaptureFixture[str],
+        run_cli: RunCli,
     ) -> None:
         """A small positive threshold must not raise SystemExit."""
         path_a, path_b = two_checkpoints
-        with patch(
-            "sys.argv",
-            [
-                "nanollm-compare",
-                "--before", str(path_a),
-                "--after", str(path_b),
-                "--threshold", "1e-3",
-            ],
-        ):
-            main()  # must complete without raising
+        run_cli([
+            "--before", str(path_a),
+            "--after", str(path_b),
+            "--threshold", "1e-3",
+        ])  # must complete without raising

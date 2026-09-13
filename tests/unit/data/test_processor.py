@@ -1,7 +1,6 @@
 """Integration tests for Processor: StoryDataset + pygrain pipeline."""
 
 import logging
-from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -37,10 +36,8 @@ def tokenizer_config() -> TokenizerConfig:
 class TestProcessor:
     """Integration tests for Processor: exercises StoryDataset + pygrain together."""
 
-    @pytest.fixture(autouse=True)
-    def _capture_logs(self, caplog: pytest.LogCaptureFixture) -> Generator[None, None, None]:
-        with caplog.at_level(logging.DEBUG, logger="src.data.processor"):
-            yield
+    CAPTURED_LOGGER = "src.data.processor"
+    CAPTURED_LEVEL = logging.DEBUG
 
     def test_creates_dataloader_with_valid_data(
         self,

@@ -1,14 +1,23 @@
 """Unit tests for src/inference/cli.py"""
 
 import argparse
+import logging
 
 import pytest
 
 from src.config import InferenceConfig
 from src.inference.cli import add_inference_args, build_inference_config
+from tests.conftest import (
+    ABOVE_RANGE_NEW_TOKENS,
+    ABOVE_RANGE_TEMPERATURE,
+    BELOW_RANGE_TEMPERATURE,
+    IN_RANGE_NEW_TOKENS,
+    IN_RANGE_TEMPERATURE,
+    SAMPLE_PROMPT,
+)
 
-SAMPLE_PROMPT = "sample-text"
 SAMPLE_CHECKPOINT_PATH = "checkpoints/sample_bundle"
+CLI_LOGGER = "src.inference.cli"
 
 
 def _parser_with_inference_args() -> argparse.ArgumentParser:
@@ -84,3 +93,85 @@ class TestBuildInferenceConfig:
         with pytest.raises(ValueError):
             build_inference_config(args)
 
+
+class TestBuildInferenceConfigTemperatureWarnings:
+    """RECOMMENDED_TEMPERATURE is only a recommendation: out-of-range values warn but are never blocked or clamped."""
+
+    def test_warns_when_temperature_below_range(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        args = _parser_with_inference_args().parse_args(
+            ["--prompt", SAMPLE_PROMPT, "--temperature", str(BELOW_RANGE_TEMPERATURE)]
+        )
+
+        with caplog.at_level(logging.WARNING, logger=CLI_LOGGER):
+            config = build_inference_config(args)
+
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert config.temperature == BELOW_RANGE_TEMPERATURE
+
+    def test_warns_when_temperature_above_range(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        args = _parser_with_inference_args().parse_args(
+            ["--prompt", SAMPLE_PROMPT, "--temperature", str(ABOVE_RANGE_TEMPERATURE)]
+        )
+
+        with caplog.at_level(logging.WARNING, logger=CLI_LOGGER):
+            config = build_inference_config(args)
+
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert config.temperature == ABOVE_RANGE_TEMPERATURE
+
+    def test_no_warning_when_temperature_inside_range(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        args = _parser_with_inference_args().parse_args(
+            ["--prompt", SAMPLE_PROMPT, "--temperature", str(IN_RANGE_TEMPERATURE)]
+        )
+
+        with caplog.at_level(logging.WARNING, logger=CLI_LOGGER):
+            config = build_inference_config(args)
+
+        assert not any(r.levelno == logging.WARNING for r in caplog.records)
+        assert config.temperature == IN_RANGE_TEMPERATURE
+
+    def test_does_not_raise_for_out_of_range_temperature(self) -> None:
+        args = _parser_with_inference_args().parse_args(
+            ["--prompt", SAMPLE_PROMPT, "--temperature", str(ABOVE_RANGE_TEMPERATURE)]
+        )
+
+        config = build_inference_config(args)
+
+        assert isinstance(config, InferenceConfig)
+
+
+
+class TestBuildInferenceConfigMaxNewTokensWarnings:
+    """RECOMMENDED_NEW_TOKENS is only a recommendation: out-of-range values warn but are never blocked or clamped."""
+
+    def test_warns_when_max_new_tokens_above_range(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        args = _parser_with_inference_args().parse_args(
+            ["--prompt", SAMPLE_PROMPT, "--max-new-tokens", str(ABOVE_RANGE_NEW_TOKENS)]
+        )
+
+        with caplog.at_level(logging.WARNING, logger=CLI_LOGGER):
+            config = build_inference_config(args)
+
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert config.max_new_tokens == ABOVE_RANGE_NEW_TOKENS
+
+    def test_no_warning_when_max_new_tokens_inside_range(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        args = _parser_with_inference_args().parse_args(
+            ["--prompt", SAMPLE_PROMPT, "--max-new-tokens", str(IN_RANGE_NEW_TOKENS)]
+        )
+
+        with caplog.at_level(logging.WARNING, logger=CLI_LOGGER):
+            config = build_inference_config(args)
+
+        assert not any(r.levelno == logging.WARNING for r in caplog.records)
+        assert config.max_new_tokens == IN_RANGE_NEW_TOKENS
