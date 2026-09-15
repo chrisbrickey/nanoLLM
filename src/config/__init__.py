@@ -5,6 +5,7 @@ from src.config.inference import (
     InferenceConfig,
     MIN_NEW_TOKENS,
     MIN_TEMPERATURE_EXCLUSIVE,
+    NEUTRAL_TEMPERATURE,
     ParamRange,
     RECOMMENDED_NEW_TOKENS,
     RECOMMENDED_TEMPERATURE,
@@ -18,6 +19,7 @@ __all__ = [
     "ParamRange",
     "MIN_NEW_TOKENS",
     "MIN_TEMPERATURE_EXCLUSIVE",
+    "NEUTRAL_TEMPERATURE",
     "RECOMMENDED_NEW_TOKENS",
     "RECOMMENDED_TEMPERATURE",
 ]

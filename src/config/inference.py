@@ -30,6 +30,9 @@ class ParamRange:
 MIN_NEW_TOKENS: int = 1 # generation requires at least one new token
 MIN_TEMPERATURE_EXCLUSIVE: float = 0.0  # generation divides raw scores by temperature so zero must be rejected
 
+# Dividing raw scores by one leaves them unchanged, so this is the model's own distribution.
+NEUTRAL_TEMPERATURE: float = 1.0
+
 # Recommended bands, advisory only. See the module docstring.
 RECOMMENDED_TEMPERATURE = ParamRange(minimum=0.1, maximum=2.0)
 RECOMMENDED_NEW_TOKENS = ParamRange(minimum=MIN_NEW_TOKENS, maximum=200)
@@ -56,7 +59,7 @@ class InferenceConfig:
     """
 
     max_new_tokens: int = 30
-    temperature: float = 0.5
+    temperature: float = NEUTRAL_TEMPERATURE
     seed: int | None = None
 
     def __post_init__(self) -> None:

@@ -3,6 +3,10 @@ nanoLLM/src/inference/demo.py
 
 Builds a Gradio web demo for interactive text generation.
 This script hooks into the existing inference pathway.
+
+Sliders default to the InferenceConfig values, so this demo aligns with the default settings used by the CLI interface.
+But the web demo does not accept a seed parameter. So responses are non-deterministic.
+Only the CLI tool accepts a seed parameter for research purposes.
 """
 
 from collections.abc import Callable

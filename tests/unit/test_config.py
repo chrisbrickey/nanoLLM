@@ -5,6 +5,7 @@ import pytest
 from src.config import (
     MIN_NEW_TOKENS,
     MIN_TEMPERATURE_EXCLUSIVE,
+    NEUTRAL_TEMPERATURE,
     RECOMMENDED_NEW_TOKENS,
     RECOMMENDED_TEMPERATURE,
     InferenceConfig,
@@ -177,6 +178,9 @@ class TestInferenceConstants:
     def test_min_temperature_exclusive_value(self) -> None:
         assert MIN_TEMPERATURE_EXCLUSIVE == 0.0
 
+    def test_neutral_temperature_value(self) -> None:
+        assert NEUTRAL_TEMPERATURE == 1.0
+
     def test_recommended_temperature_values(self) -> None:
         assert RECOMMENDED_TEMPERATURE.minimum == 0.1
         assert RECOMMENDED_TEMPERATURE.maximum == 2.0
@@ -200,11 +204,21 @@ class TestInferenceConfig:
     """Test suite for InferenceConfig dataclass"""
 
     def test_default_values(self) -> None:
-        """Test that InferenceConfig has sensible default values."""
+        """Every inference surface starts from these defaults, so pin them here."""
         config = InferenceConfig()
-        assert config.max_new_tokens > 0
-        assert config.temperature > 0.0
+        assert config.max_new_tokens == 30
+        assert config.temperature == 1.0
         assert config.seed is None
+
+    def test_default_temperature_leaves_scores_unscaled(self) -> None:
+        """Temperature 1.0 divides raw scores by one, which is the model's own distribution."""
+        assert InferenceConfig().temperature == NEUTRAL_TEMPERATURE
+
+    def test_defaults_fall_inside_recommended_bands(self) -> None:
+        """A default outside its own recommended band would warn on every unmodified run."""
+        config = InferenceConfig()
+        assert RECOMMENDED_TEMPERATURE.contains(config.temperature)
+        assert RECOMMENDED_NEW_TOKENS.contains(config.max_new_tokens)
 
     def test_accepts_temperature_outside_recommended_range(self) -> None:
         """RECOMMENDED_TEMPERATURE is a recommendation, not a hard limit; the CLI is a research surface."""
